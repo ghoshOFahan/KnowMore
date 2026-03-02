@@ -102,7 +102,7 @@ export const topics = table("topics", {
   createdAt: t.timestamp("created_at").defaultNow().notNull(),
 });
 export const topicAnchors = table(
-  "topicAnchors",
+  "topic_anchors",
   {
     userId: t
       .text("user_id")

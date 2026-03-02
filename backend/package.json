@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/ghoshOFahan/rst-backend#readme",
   "dependencies": {
+    "@google/genai": "^1.43.0",
     "@google/generative-ai": "^0.24.1",
     "@types/node": "^24.9.2",
     "better-auth": "^1.4.19",

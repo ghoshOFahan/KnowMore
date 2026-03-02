@@ -9,6 +9,6 @@ const router = Router();
 router.post("/onboarding", requireAuth, insertData);
 
 // Endpoint for the Dashboard to fetch the data formatted for Recharts
-router.get("/profile/:userId/radar", requireAuth, getProfileRadar);
+router.get("/profile/radar", requireAuth, getProfileRadar);
 
 export default router;
