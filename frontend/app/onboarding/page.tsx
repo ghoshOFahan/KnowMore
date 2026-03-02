@@ -46,11 +46,23 @@ export default function Onboarding() {
   const handleSubmit = async () => {
     if (selected.length !== 5) return;
     setIsSubmitting(true);
+    console.log(`${process.env.NEXT_PUBLIC_API_URL}`);
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ topicArray: selected }),
+      },
+    );
 
-    // Simulate API call to save topics & generate vectors
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    router.push("/dashboard");
+    if (res.ok) {
+      router.push("/dashboard");
+    } else {
+      setIsSubmitting(false);
+      console.log("Onboarding request failed!");
+    }
   };
 
   return (
@@ -97,7 +109,7 @@ export default function Onboarding() {
                   ${
                     isSelected
                       ? "bg-(--color-purple) border-(--color-purple) text-white shadow-[0_0_15px_rgba(139,92,246,0.5)]"
-                      : "bg-[var(--color-line)]/20 border-[var(--color-line)] text-[var(--color-comment)] hover:bg-[var(--color-line)]/50"
+                      : "bg-(--color-line)/20 border-(--color-line) text-(--color-comment) hover:bg-(--color-line)/50"
                   }
                   ${isFull ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}
                 `}

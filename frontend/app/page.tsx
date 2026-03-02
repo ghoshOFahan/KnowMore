@@ -7,7 +7,7 @@ import { authClient } from "./auth/authClient";
 const handleGoogleLogin = async () => {
   await authClient.signIn.social({
     provider: "google",
-    callbackURL: `${window.location.origin}/dashboard`,
+    callbackURL: `${window.location.origin}/onboarding`,
     errorCallbackURL: `${window.location.origin}/login?error=google`,
   });
 };

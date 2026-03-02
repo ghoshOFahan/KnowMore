@@ -27,7 +27,18 @@ const MOCK_DATA = [
 export default function Dashboard() {
   const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
-
+  const [radarData, setRadarData] = useState(MOCK_DATA);
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/profile/radar`, {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        console.log(data.radarData);
+        setRadarData(data.radarData);
+      });
+  }, [session]);
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-fg)]">
@@ -179,7 +190,7 @@ export default function Dashboard() {
                       }}
                       responsive
                       outerRadius="80%"
-                      data={MOCK_DATA}
+                      data={radarData}
                       margin={{
                         top: 20,
                         left: 20,
@@ -191,8 +202,8 @@ export default function Dashboard() {
                       <PolarAngleAxis dataKey="subject" />
                       <PolarRadiusAxis />
                       <Radar
-                        name="Mike"
-                        dataKey="A"
+                        name={session?.user?.name}
+                        dataKey="score"
                         stroke="#8884d8"
                         fill="#8884d8"
                         fillOpacity={0.6}
