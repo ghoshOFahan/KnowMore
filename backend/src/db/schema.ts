@@ -116,3 +116,27 @@ export const topicAnchors = table(
   },
   (table) => [primaryKey({ columns: [table.userId, table.topicId] })],
 );
+export const games = table("games", {
+  id: t.integer().primaryKey().generatedAlwaysAsIdentity(),
+  roomId: t.varchar({ length: 10 }).notNull(),
+  winnerId: t.text("winner_id").references(() => users.id),
+  wordChain: t.text("word_chain").array().notNull().default([]),
+  playedAt: t.timestamp("played_at").defaultNow().notNull(),
+});
+export const gamePlayers = table(
+  "game_players",
+  {
+    gameId: t
+      .integer("game_id")
+      .references(() => games.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: t
+      .text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    isEliminated: t.boolean("is_eliminated").default(false),
+    wordsContributed: t.integer("words_contributed").default(0),
+    rank: t.integer("rank"),
+  },
+  (table) => [primaryKey({ columns: [table.gameId, table.userId] })],
+);

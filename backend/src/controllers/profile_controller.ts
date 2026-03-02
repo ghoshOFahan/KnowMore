@@ -7,14 +7,10 @@ export const getProfileRadar = async (
   req: Request,
   res: Response,
 ): Promise<any> => {
-  const input = req.params.userId;
-  var userId = 0;
-  if (input) {
-    userId = parseInt(input, 10);
-    if (isNaN(userId))
-      return res.status(400).json({ error: "Invalid user ID" });
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(400).json({ error: "Invalid user ID" });
   }
-
   try {
     const anchors = await db
       .select({
@@ -35,7 +31,6 @@ export const getProfileRadar = async (
       if (a.score && a.score > maxScore) maxScore = a.score;
     });
 
-    // Add 20% padding to fullMark so the chart scales beautifully
     const fullMark = Math.max(10, Math.ceil(maxScore * 1.2));
 
     const radarData = anchors.map((a) => ({

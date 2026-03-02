@@ -5,7 +5,9 @@ import type { Request, Response } from "express";
 import { embedWord } from "../ai/embeddingJudge.js";
 
 export const insertData = async (req: Request, res: Response) => {
-  const userId = 123;
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Invalid user ID" });
+
   const topicArray: string[] = req.body.topicArray;
   const existing = await db
     .select()
@@ -14,7 +16,8 @@ export const insertData = async (req: Request, res: Response) => {
   if (existing.length !== 0) {
     return res.status(400).json({ message: "Onboarding error occured" });
   }
-  const uniqueTopics: string[] = [...new Set(topicArray)]; //Removes redunduncy
+  const uniqueTopics: string[] = [...new Set(topicArray)]; //Removes redunduncy in the topics table
+
   for (const topic of uniqueTopics) {
     const alreadyInserted = await db
       .select()
