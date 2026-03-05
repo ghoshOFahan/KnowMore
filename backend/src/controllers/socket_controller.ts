@@ -39,6 +39,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
     cors: {
       origin: process.env.FRONTEND_URL,
       methods: ["GET", "POST"],
+      credentials: true,
     },
   });
 

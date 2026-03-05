@@ -1,22 +1,23 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import "dotenv/config";
-
+import { GoogleGenAI, Type } from "@google/genai";
+type CommentaryArgs = {
+  sentence1: string;
+  sentence2: string;
+  sentence3: string;
+};
 if (!process.env.GEMINI_API_KEY) {
   throw new Error("GEMINI_API_KEY not found in environment variables.");
 }
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({
-  model: "models/gemini-2.5-flash-lite",
-});
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export async function getFunnyComment(gameSummary: string): Promise<string> {
   const prompt = `
 You are a witty but STRICTLY factual commentator for a multiplayer word-chain game.
 
-There are ONLY THREE possible ways to lose the game:
-1) A word begins with R, S, or T (this is called the RST rule).
-2) A word is repeated.
-3) The words are NOT related enough.
+There are ONLY TWO possible ways to lose the game:
+1) The words are NOT related enough
+2) The words are repeated
 
 No other loss reasons exist.
 
@@ -25,22 +26,56 @@ ${gameSummary}
 
 MANDATORY INSTRUCTIONS:
 - Use ONLY the boolean flags provided in the game summary to determine the loss reason.
-- If rstOccurred is true:
-  - You MUST clearly mention the RST rule as the reason for loss.
-- Else if repeatedOccurred is true:
+- If repeatedOccurred is true:
   - You MUST clearly mention that the word was already used.
 - Else if unrelatedOccurred is true:
   - You MUST clearly mention that the words were not related.
 - NEVER invent rules, letters, players, locations, or events.
-- NEVER imply a loss reason different from the three listed above.
-
-OUTPUT RULES:
-- Respond with EXACTLY 3 short precise sentences.
-- Congratulate the winner and then explain the loss reason
-- Humor must be based ONLY on the confirmed loss reason.
+- NEVER imply a loss reason different from the two listed above.
 `;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
-  return text.trim();
+  const tools = [
+    {
+      functionDeclarations: [
+        {
+          name: "generate_commentary",
+          description: "Generate commentary for the word chain game result",
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              sentence1: {
+                type: Type.STRING,
+                description: "Congratulate the winner",
+              },
+              sentence2: {
+                type: Type.STRING,
+                description: "Explain the loss reason",
+              },
+              sentence3: {
+                type: Type.STRING,
+                description:
+                  "Humorous remark based only on the confirmed loss reason",
+              },
+            },
+            required: ["sentence1", "sentence2", "sentence3"],
+          },
+        },
+      ],
+    },
+  ];
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+    config: { tools: tools },
+  });
+
+  const call = response.candidates?.[0]?.content?.parts?.find(
+    (p: any) => p.functionCall,
+  )?.functionCall;
+
+  if (!call) return "";
+  const args = call.args as CommentaryArgs;
+
+  return `${args.sentence1} ${args.sentence2} ${args.sentence3}`;
 }

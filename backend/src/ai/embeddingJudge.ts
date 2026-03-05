@@ -6,18 +6,8 @@ if (!process.env.GEMINI_API_KEY) {
   throw new Error("GEMINI_API_KEY not found in environment variables.");
 }
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-// const model = genAI.getGenerativeModel({
-//   model: "embedding-001",
-// });
 //768-d vector
 export async function embedWord(word: string): Promise<number[]> {
-  // const response = await model.embedContent({
-  //   content: {
-  //     role: "user",
-  //     parts: [{ text: word }],
-  //   },
-  // });
   const response = await ai.models.embedContent({
     model: "gemini-embedding-001",
     contents: {

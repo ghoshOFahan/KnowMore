@@ -34,7 +34,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider
+          attribute="data-theme"
+          defaultTheme="tokyo"
+          themes={["tokyo", "dracula"]}
+          enableSystem={false}
+        >
+          {children}
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

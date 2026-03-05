@@ -1,6 +1,6 @@
 import { db } from "../db/db.js";
 import { topicAnchors, topics } from "../db/schema.js";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { embedWord } from "../ai/embeddingJudge.js";
 

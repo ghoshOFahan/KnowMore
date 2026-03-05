@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Check, ArrowRight } from "lucide-react";
@@ -32,7 +32,7 @@ export default function Onboarding() {
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [checking, setChecking] = useState(true);
   const toggleTopic = (topic: string) => {
     if (selected.includes(topic)) {
       setSelected(selected.filter((t) => t !== topic));
@@ -64,6 +64,21 @@ export default function Onboarding() {
       console.log("Onboarding request failed!");
     }
   };
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`, {
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.hasOnboarded) {
+          router.push(`${window.location.origin}/dashboard`);
+        } else {
+          setChecking(false);
+        }
+      });
+  }, [router]);
+
+  if (checking) return null;
 
   return (
     <ProtectedRoute>
