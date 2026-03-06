@@ -29,7 +29,9 @@ app.use((req, res, next) => {
   next();
 });
 // Setup BullMQ Queue globally so controllers can push to it
-const redisConnection = new Redis(process.env.REDIS_URL as string);
+const redisConnection = new Redis(process.env.REDIS_URL as string, {
+  tls: { rejectUnauthorized: false },
+});
 export const analyticsQueue = new Queue("identity-analyzer", {
   connection: redisConnection,
 });

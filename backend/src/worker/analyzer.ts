@@ -8,37 +8,69 @@ import type { GameState } from "../types/game.js";
 
 const redisConnection = new Redis(process.env.REDIS_URL as string, {
   maxRetriesPerRequest: null,
-  enableReadyCheck: false, // avoid version warnings
+  enableReadyCheck: false,
   lazyConnect: true,
   showFriendlyErrorStack: true,
+  tls: { rejectUnauthorized: false },
 });
+
+redisConnection.on("connect", () => console.log("[Worker Redis] Connected"));
+redisConnection.on("error", (err) =>
+  console.error("[Worker Redis] Error:", err),
+);
 
 export const analyticsWorker = new Worker(
   "identity-analyzer",
   async (job: Job<{ gameState: GameState }>) => {
+    console.log("[Worker] Job received, id:", job.id);
+
     const { gameState } = job.data;
     const { wordHistory, players } = gameState;
 
-    if (!wordHistory || wordHistory.length === 0) return;
+    console.log("[Worker] roomId:", gameState.roomId);
+    console.log("[Worker] wordHistory:", wordHistory);
+    console.log(
+      "[Worker] players:",
+      players.map((p) => ({
+        id: p.id,
+        clientId: p.clientId,
+        username: p.username,
+      })),
+    );
 
-    //Vectorize all words played in the match
+    if (!wordHistory || wordHistory.length === 0) {
+      console.log("[Worker] No word history — skipping");
+      return;
+    }
+
+    // Vectorize all words
     const wordVectors: number[][] = [];
     for (const word of wordHistory) {
       try {
         const vec = await embedWord(word);
         wordVectors.push(vec);
+        console.log(
+          `[Worker] Embedded word "${word}" — vector length: ${vec.length}`,
+        );
       } catch (e) {
-        console.error("Failed to embed word:", word, e);
+        console.error(`[Worker] Failed to embed word "${word}":`, e);
         wordVectors.push([]);
       }
     }
-    //Process Gravity of each player
-    for (const player of players) {
-      // Assuming clientId from Socket is the NextAuth Database User ID
-      const userId = parseInt(player.clientId, 10);
-      if (isNaN(userId)) continue;
 
-      // Fetch their 5 anchors
+    // Process each player
+    for (const player of players) {
+      const userId = player.clientId;
+      console.log(
+        `[Worker] Processing player: ${player.username}, clientId: "${userId}"`,
+      );
+
+      if (!userId) {
+        console.log("[Worker] No clientId — skipping player");
+        continue;
+      }
+
+      // Fetch anchors
       const userAnchors = await db
         .select({
           topicId: topicAnchors.topicId,
@@ -49,13 +81,20 @@ export const analyticsWorker = new Worker(
         .innerJoin(topics, eq(topicAnchors.topicId, topics.id))
         .where(eq(topicAnchors.userId, userId));
 
-      if (userAnchors.length === 0) continue;
+      console.log(
+        `[Worker] Anchors found for ${player.username}:`,
+        userAnchors.map((a) => a.name),
+      );
 
-      // HashMap to track points gained in this specific match
+      if (userAnchors.length === 0) {
+        console.log(`[Worker] No anchors for ${player.username} — skipping`);
+        continue;
+      }
+
       const scoreUpdates: Record<number, number> = {};
       userAnchors.forEach((a) => (scoreUpdates[a.topicId] = 0));
 
-      // Measure Gravity
+      // Measure gravity
       for (let i = 0; i < wordHistory.length; i++) {
         const wordVec = wordVectors[i];
         if (!wordVec || wordVec.length === 0) continue;
@@ -63,7 +102,6 @@ export const analyticsWorker = new Worker(
         let bestTopicId = -1;
         let highestSim = -1;
 
-        // Compare word vector to the 5 anchors
         for (const anchor of userAnchors) {
           if (!anchor.vector || anchor.vector.length === 0) continue;
           const sim = cosineSimilarity(wordVec, anchor.vector);
@@ -73,17 +111,28 @@ export const analyticsWorker = new Worker(
           }
         }
 
-        // Only award points if it's somewhat related
+        console.log(
+          `[Worker] Word "${wordHistory[i]}" → best topic id: ${bestTopicId}, sim: ${highestSim.toFixed(4)}`,
+        );
+
         if (highestSim > 0.35 && bestTopicId !== -1) {
           scoreUpdates[bestTopicId] =
             (scoreUpdates[bestTopicId] ?? 0) + highestSim * 10;
         }
       }
 
-      // 3. Update the Database using Drizzle's sql template for incrementing
+      console.log(
+        `[Worker] Score updates for ${player.username}:`,
+        scoreUpdates,
+      );
+
+      // Update DB
       for (const anchor of userAnchors) {
         const pointsToAdd = scoreUpdates[anchor.topicId];
         if (pointsToAdd && pointsToAdd > 0) {
+          console.log(
+            `[Worker] Adding ${pointsToAdd.toFixed(2)} points to topic "${anchor.name}" for ${player.username}`,
+          );
           await db
             .update(topicAnchors)
             .set({
@@ -95,9 +144,16 @@ export const analyticsWorker = new Worker(
                 eq(topicAnchors.topicId, anchor.topicId),
               ),
             );
+          console.log(`[Worker] DB updated for topic "${anchor.name}"`);
+        } else {
+          console.log(
+            `[Worker] No points to add for topic "${anchor.name}" (score: ${pointsToAdd})`,
+          );
         }
       }
     }
+
+    console.log("[Worker] Job complete for room:", gameState.roomId);
   },
   {
     connection: redisConnection,
@@ -108,10 +164,19 @@ export const analyticsWorker = new Worker(
 
 analyticsWorker.on("completed", (job) => {
   console.log(
-    `Gravity calculated & DB updated for room ${job.data.gameState.roomId}`,
+    `[Worker] ✅ Job completed for room ${job.data.gameState.roomId}`,
   );
 });
 
 analyticsWorker.on("failed", (job, err) => {
-  console.error(`Analyzer Job failed:`, err);
+  console.error(`[Worker] ❌ Job failed:`, err);
+  console.error(`[Worker] Job data:`, job?.data);
+});
+
+analyticsWorker.on("active", (job) => {
+  console.log(`[Worker] 🔄 Job active:`, job.id);
+});
+
+analyticsWorker.on("stalled", (jobId) => {
+  console.warn(`[Worker] ⚠️ Job stalled:`, jobId);
 });

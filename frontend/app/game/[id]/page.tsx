@@ -1,17 +1,19 @@
 "use client";
+import * as React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, AlertCircle, Sparkles, Loader2, Trophy, X } from "lucide-react";
 import { authClient } from "../../auth/authClient";
 import { useSocket, getClientId } from "../../hooks/useSocket";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import ProtectedRoute from "../../auth/ProtectedRoute";
 import type { GameState } from "../../types/game";
-import * as React from "react";
+
+const { useSession } = authClient;
+
 interface GameArenaProps {
   params: Promise<{ id: string }>;
 }
-const { useSession } = authClient;
 
 interface WordEntry {
   id: number;
@@ -21,30 +23,71 @@ interface WordEntry {
   isValid?: boolean;
 }
 
+// ✅ Check word exists in dictionary, reject spaces/sentences
+async function validateWord(
+  word: string,
+): Promise<{ valid: boolean; reason?: string }> {
+  const trimmed = word.trim();
+
+  // No spaces or multiple words
+  if (/\s/.test(trimmed)) {
+    return {
+      valid: false,
+      reason: "Only single words are allowed — no spaces or sentences.",
+    };
+  }
+
+  // Only letters
+  if (!/^[a-zA-Z]+$/.test(trimmed)) {
+    return { valid: false, reason: "Words must contain only letters." };
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${trimmed}`,
+    );
+    if (res.status === 404) {
+      return {
+        valid: false,
+        reason: `"${trimmed}" isn't a real word. Try again!`,
+      };
+    }
+    if (!res.ok) {
+      // If the API is down, allow it through to avoid blocking the game
+      return { valid: true };
+    }
+    return { valid: true };
+  } catch {
+    // Network error — allow through
+    return { valid: true };
+  }
+}
+
 export default function GameArena({ params }: GameArenaProps) {
+  const { id: roomId } = React.use(params);
+
   const { data: session } = useSession();
   const socket = useSocket();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const isAiMode = searchParams.get("mode") === "ai";
+
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [wordHistory, setWordHistory] = useState<WordEntry[]>([]);
   const [input, setInput] = useState("");
   const [isAiThinking, setIsAiThinking] = useState(false);
-  const [gameOver, setGameOver] = useState<{
-    winner: string;
-    commentary: string;
-  } | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isMyTurn, setIsMyTurn] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [lastRuling, setLastRuling] = useState<{
     word: string;
     isValid: boolean;
     reason: string;
   } | null>(null);
-  const [isMyTurn, setIsMyTurn] = useState(false);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { id: roomId } = React.use(params);
+  const [gameOver, setGameOver] = useState<{
+    winner: string;
+    commentary: string;
+  } | null>(null);
 
   // Auto-scroll to bottom on new words
   useEffect(() => {
@@ -76,20 +119,20 @@ export default function GameArena({ params }: GameArenaProps) {
     };
 
     const handleAiRuled = (data: {
+      playerId: string;
       playerName: string;
       newWord: string;
       isValid: boolean;
       isEliminated: boolean;
       reason: string;
     }) => {
-      // Add word to visible history
       setWordHistory((prev) => [
         ...prev,
         {
           id: Date.now(),
           word: data.newWord,
           playerName: data.playerName,
-          isMe: data.playerName === (session?.user?.name ?? ""),
+          isMe: data.playerId === socket.id,
           isValid: data.isValid,
         },
       ]);
@@ -100,20 +143,20 @@ export default function GameArena({ params }: GameArenaProps) {
           isValid: false,
           reason: data.reason,
         });
-        // Clear the ruling toast after 3s
-        setTimeout(() => setLastRuling(null), 3000);
+        setTimeout(() => setLastRuling(null), 4000);
       }
     };
 
     const handleGameEnded = ({
-      gameState,
+      gameState: finalState,
       commentary,
     }: {
       gameState: GameState;
       commentary: string;
     }) => {
-      setGameState(gameState);
-      setGameOver({ winner: gameState.winner ?? "No One", commentary });
+      setGameState(finalState);
+      setIsMyTurn(false);
+      setGameOver({ winner: finalState.winner ?? "No One", commentary });
     };
 
     const handleGameError = (err: string) => {
@@ -133,17 +176,41 @@ export default function GameArena({ params }: GameArenaProps) {
       socket.off("gameEnded", handleGameEnded);
       socket.off("gameError", handleGameError);
     };
-  }, [socket, session]);
+  }, [socket]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!input.trim() || !isMyTurn || isAiThinking) return;
+      const word = input.trim().toLowerCase();
+      if (!word || !isMyTurn || isAiThinking || isValidating) return;
 
-      socket.emit("submitWord", { roomId, word: input.trim().toLowerCase() });
+      // ✅ Local validation first — spaces, sentences, non-letters
+      if (/\s/.test(word)) {
+        setLocalError("Only single words allowed — no spaces or sentences.");
+        setTimeout(() => setLocalError(null), 3000);
+        return;
+      }
+      if (!/^[a-zA-Z]+$/.test(word)) {
+        setLocalError("Words must contain only letters.");
+        setTimeout(() => setLocalError(null), 3000);
+        return;
+      }
+
+      // ✅ Dictionary API check
+      setIsValidating(true);
+      const { valid, reason } = await validateWord(word);
+      setIsValidating(false);
+
+      if (!valid) {
+        setLocalError(reason ?? "Invalid word.");
+        setTimeout(() => setLocalError(null), 3000);
+        return;
+      }
+
+      socket.emit("submitWord", { roomId, word });
       setInput("");
     },
-    [input, isMyTurn, isAiThinking, roomId, socket],
+    [input, isMyTurn, isAiThinking, isValidating, roomId, socket],
   );
 
   const handleLeave = () => {
@@ -154,7 +221,7 @@ export default function GameArena({ params }: GameArenaProps) {
 
   const lastWord = wordHistory[wordHistory.length - 1]?.word ?? null;
   const activePlayers = gameState?.players.filter((p) => !p.isEliminated) ?? [];
-  const myPlayer = gameState?.players.find((p) => p.id === socket.id);
+  const isBusy = isAiThinking || isValidating;
 
   return (
     <ProtectedRoute>
@@ -163,7 +230,11 @@ export default function GameArena({ params }: GameArenaProps) {
         <header className="h-16 border-b border-[var(--color-line)] flex items-center justify-between px-6 bg-[var(--color-bg)]/80 backdrop-blur shrink-0">
           <div className="flex items-center gap-3">
             <div
-              className={`w-2 h-2 rounded-full animate-pulse ${gameState?.status === "INGAME" ? "bg-[var(--color-green)]" : "bg-[var(--color-comment)]"}`}
+              className={`w-2 h-2 rounded-full animate-pulse ${
+                gameState?.status === "INGAME"
+                  ? "bg-[var(--color-green)]"
+                  : "bg-[var(--color-comment)]"
+              }`}
             />
             <span className="font-mono text-sm tracking-wider text-[var(--color-comment)]">
               ROOM: {roomId}
@@ -176,7 +247,6 @@ export default function GameArena({ params }: GameArenaProps) {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Player list */}
             <div className="hidden md:flex items-center gap-2">
               {gameState?.players.map((p) => (
                 <div
@@ -190,7 +260,11 @@ export default function GameArena({ params }: GameArenaProps) {
                   }`}
                 >
                   <div
-                    className={`w-1.5 h-1.5 rounded-full ${p.isEliminated ? "bg-[var(--color-red)]" : "bg-[var(--color-green)]"}`}
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      p.isEliminated
+                        ? "bg-[var(--color-red)]"
+                        : "bg-[var(--color-green)]"
+                    }`}
                   />
                   {p.username}
                 </div>
@@ -232,7 +306,7 @@ export default function GameArena({ params }: GameArenaProps) {
           {gameState?.status === "INGAME" && (
             <div className="absolute top-0 left-0 w-full h-1 bg-[var(--color-line)]">
               <motion.div
-                key={lastWord} // restart timer on each new word
+                key={lastWord}
                 initial={{ width: "100%" }}
                 animate={{ width: "0%" }}
                 transition={{ duration: 15, ease: "linear" }}
@@ -265,7 +339,9 @@ export default function GameArena({ params }: GameArenaProps) {
               >
                 <div className="flex flex-col gap-1 max-w-[70%]">
                   <span
-                    className={`text-xs text-[var(--color-comment)] ${move.isMe ? "text-right" : "text-left"}`}
+                    className={`text-xs text-[var(--color-comment)] ${
+                      move.isMe ? "text-right" : "text-left"
+                    }`}
                   >
                     {move.playerName}
                   </span>
@@ -284,9 +360,9 @@ export default function GameArena({ params }: GameArenaProps) {
               </motion.div>
             ))}
 
-            {/* AI Thinking indicator */}
+            {/* AI Thinking / Validating indicator */}
             <AnimatePresence>
-              {isAiThinking && (
+              {isBusy && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -299,7 +375,9 @@ export default function GameArena({ params }: GameArenaProps) {
                       className="text-[var(--color-purple)] animate-pulse"
                     />
                     <span className="text-sm text-[var(--color-comment)]">
-                      AI judging...
+                      {isValidating
+                        ? "Checking dictionary..."
+                        : "AI judging..."}
                     </span>
                   </div>
                 </motion.div>
@@ -307,16 +385,17 @@ export default function GameArena({ params }: GameArenaProps) {
             </AnimatePresence>
           </div>
 
-          {/* Ruling Toast */}
+          {/* Error / Ruling Toast */}
           <AnimatePresence>
-            {lastRuling && !lastRuling.isValid && (
+            {(localError || (lastRuling && !lastRuling.isValid)) && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="mb-3 px-4 py-2 rounded-lg bg-[var(--color-red)]/10 border border-[var(--color-red)]/30 text-[var(--color-red)] text-sm"
+                className="mb-3 px-4 py-2 rounded-lg bg-[var(--color-red)]/10 border border-[var(--color-red)]/30 text-[var(--color-red)] text-sm flex items-center gap-2"
               >
-                {lastRuling.reason}
+                <AlertCircle size={14} />
+                {localError ?? lastRuling?.reason}
               </motion.div>
             )}
           </AnimatePresence>
@@ -327,25 +406,32 @@ export default function GameArena({ params }: GameArenaProps) {
               <input
                 autoFocus
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                disabled={
-                  !isMyTurn || isAiThinking || gameState?.status !== "INGAME"
-                }
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  if (localError) setLocalError(null);
+                }}
+                disabled={!isMyTurn || isBusy || gameState?.status !== "INGAME"}
                 placeholder={
                   !isMyTurn
                     ? "Waiting for your turn..."
-                    : isAiThinking
-                      ? "AI is judging..."
-                      : "Type a related word..."
+                    : isValidating
+                      ? "Checking dictionary..."
+                      : isAiThinking
+                        ? "AI is judging..."
+                        : "Type a single word..."
                 }
                 className="w-full bg-[var(--color-line)]/20 border border-[var(--color-line)] rounded-xl py-4 pl-6 pr-14 text-lg outline-none focus:border-[var(--color-purple)] focus:bg-[var(--color-bg)] transition-all placeholder-[var(--color-comment)] disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="submit"
-                disabled={!input.trim() || !isMyTurn || isAiThinking}
+                disabled={!input.trim() || !isMyTurn || isBusy}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-[var(--color-purple)] text-white hover:bg-[var(--color-pink)] disabled:opacity-50 disabled:bg-[var(--color-line)] transition-colors"
               >
-                <Send size={20} />
+                {isValidating ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <Send size={20} />
+                )}
               </button>
             </form>
 
@@ -364,7 +450,11 @@ export default function GameArena({ params }: GameArenaProps) {
                 )}
               </div>
               <span
-                className={`text-xs font-mono ${isMyTurn ? "text-[var(--color-purple)]" : "text-[var(--color-comment)]"}`}
+                className={`text-xs font-mono ${
+                  isMyTurn
+                    ? "text-[var(--color-purple)]"
+                    : "text-[var(--color-comment)]"
+                }`}
               >
                 {isMyTurn ? "YOUR TURN" : "WAITING..."}
               </span>

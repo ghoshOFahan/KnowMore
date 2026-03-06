@@ -18,6 +18,9 @@ import {
 } from "./redis_helper.js";
 import { judgeWords } from "../ai/judge.js";
 import { getFunnyComment } from "../ai/aiCommentator.js";
+import { auth } from "../auth.js";
+import { db } from "../db/db.js";
+import { games, gamePlayers } from "../db/schema.js";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -25,10 +28,67 @@ import type {
   SocketData,
 } from "../types/socket.js";
 
-const redis = new Redis(process.env.REDIS_URL!);
+const redis = new Redis(process.env.REDIS_URL!, {
+  tls: { rejectUnauthorized: false },
+});
 const pendingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
-// We export this so we can inject the server and queue from index.ts
+async function getDbUserId(socket: any): Promise<string | null> {
+  try {
+    const cookieHeader = socket.handshake.headers.cookie ?? "";
+    const headers = new Headers({ cookie: cookieHeader });
+    const session = await auth.api.getSession({ headers });
+    return session?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ✅ Insert completed game into games + gamePlayers tables
+async function persistGame(gameState: GameState, wordHistory: string[]) {
+  try {
+    const winnerPlayer = gameState.players.find(
+      (p) => p.username === gameState.winner,
+    );
+    const winnerId = winnerPlayer?.clientId ?? null;
+
+    // Count words per player by looking at who submitted (tracked via word index / turn order)
+    // Simple approach: equal split — you can make this smarter later
+    const wordCounts: Record<string, number> = {};
+    gameState.players.forEach((p) => (wordCounts[p.clientId] = 0));
+
+    // Insert game row
+    const [insertedGame] = await db
+      .insert(games)
+      .values({
+        roomId: gameState.roomId,
+        winnerId,
+        wordChain: wordHistory,
+      })
+      .returning({ id: games.id });
+
+    if (!insertedGame) throw new Error("Game insert returned nothing");
+
+    // Insert one row per player
+    await db.insert(gamePlayers).values(
+      gameState.players.map((p, idx) => ({
+        gameId: insertedGame.id,
+        userId: p.clientId,
+        isEliminated: p.isEliminated ?? false,
+        wordsContributed: wordCounts[p.clientId] ?? 0,
+        rank: p.isEliminated ? idx + 2 : 1, // winner = rank 1
+      })),
+    );
+
+    console.log(
+      `[DB] Game ${gameState.roomId} persisted, id: ${insertedGame.id}`,
+    );
+  } catch (err) {
+    // Non-fatal — analytics still runs, game still ends
+    console.error("[DB] Failed to persist game:", err);
+  }
+}
+
 export function initSocket(httpServer: any, analyticsQueue: Queue) {
   const io = new Server<
     ClientToServerEvents,
@@ -47,14 +107,15 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
     console.log("Client connected:", socket.id);
 
     socket.on("createRoom", async ({ username, maxPlayers, clientId }) => {
-      if (!clientId) {
+      const dbUserId = (await getDbUserId(socket)) ?? clientId;
+      if (!dbUserId) {
         socket.emit("gameError", "clientId missing");
         return;
       }
       const roomId = generateRoomId();
       const newGame: GameState = {
-        roomId: roomId,
-        players: [{ id: socket.id, username, clientId }],
+        roomId,
+        players: [{ id: socket.id, username, clientId: dbUserId }],
         maxPlayers: maxPlayers || 4,
         status: "LOBBY",
         currentPlayerId: socket.id,
@@ -68,7 +129,9 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
     });
 
     socket.on("joinRoom", async ({ username, roomId, clientId }) => {
-      if (!clientId) return socket.emit("gameError", "clientId missing");
+      const dbUserId = (await getDbUserId(socket)) ?? clientId;
+      if (!dbUserId) return socket.emit("gameError", "clientId missing");
+
       const gameState = await getGame(redis, roomId);
       if (gameState === null) return socket.emit("gameError", "game not found");
 
@@ -81,12 +144,12 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       }
 
       const alreadyInRoom = gameState.players.some(
-        (p) => p.clientId === clientId,
+        (p) => p.clientId === dbUserId,
       );
       if (alreadyInRoom)
         return socket.emit("gameError", "player already in room");
 
-      gameState.players.push({ id: socket.id, username: username, clientId });
+      gameState.players.push({ id: socket.id, username, clientId: dbUserId });
       if (gameState.players.length === gameState.maxPlayers) {
         gameState.status = "INGAME";
       }
@@ -102,24 +165,20 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       if (!gameState) return;
       if (gameState.currentPlayerId !== socket.id) return;
 
-      io.to(roomId).emit("aiThinking", { roomId: roomId, isThinking: true });
+      io.to(roomId).emit("aiThinking", { roomId, isThinking: true });
+
       const playerId = socket.id;
       const playerObject = gameState.players.find((p) => p.id === playerId);
       const playerName = playerObject ? playerObject.username : "A player";
 
-      const startsWithRST = /^[rst]/i.test(word);
       let ruling = { isValid: false, score: 0 };
       let eliminationReason = "";
-      let rstOccurred = false;
       let unrelatedOccurred = false;
       let repeatedOccurred = false;
 
-      if (startsWithRST) {
-        rstOccurred = true;
-        eliminationReason = `Player ${playerName} used word "${word}" which starts with R/S/T`;
-      } else if (await findWord(redis, roomId, word)) {
+      if (await findWord(redis, roomId, word)) {
         repeatedOccurred = true;
-        eliminationReason = `Word has been used before and therefore player ${playerName} is disqualified`;
+        eliminationReason = `Word "${word}" has already been used — player ${playerName} is disqualified`;
       } else {
         const lastWord = await getLastWord(redis, roomId);
         ruling = lastWord
@@ -128,11 +187,11 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
 
         if (!ruling.isValid) {
           unrelatedOccurred = true;
-          eliminationReason = `${playerName} entered ${word} and it is not related to ${lastWord}`;
+          eliminationReason = `"${word}" is not related enough to "${lastWord}" — ${playerName} is disqualified`;
         }
       }
 
-      if (ruling.isValid) {
+      if (ruling.isValid && !repeatedOccurred) {
         await pushWord(redis, roomId, word);
         gameState.currentPlayerId = getNextActivePlayerId(
           gameState.players,
@@ -162,7 +221,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
             Players: ${gameState.players.map((p) => `${p.username}:${p.isEliminated ? "OUT" : "IN"}`).join(", ")}
             WordChain: ${fullHistory.join(" -> ")}
             Elimination events: Rejected Word: "${word}", Previous: "${lastValidWord}". Reason: ${eliminationReason}
-            LossFlags: rstOccurred: ${rstOccurred}, repeatedOccurred: ${repeatedOccurred}, unrelatedOccurred: ${unrelatedOccurred}
+            LossFlags: rstOccurred: false, repeatedOccurred: ${repeatedOccurred}, unrelatedOccurred: ${unrelatedOccurred}
           `;
 
           let commentary =
@@ -173,7 +232,10 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
 
           io.to(roomId).emit("gameEnded", { gameState, commentary });
 
-          // 🔥 CRITICAL HANDOFF TO BULLMQ WORKER 🔥
+          // ✅ Persist game to DB for stats/history
+          await persistGame(gameState, fullHistory);
+
+          // Hand off to BullMQ worker for analytics
           const mergedState = { ...gameState, wordHistory: fullHistory };
           await analyticsQueue.add("analyze-game", { gameState: mergedState });
         } else {
@@ -195,8 +257,8 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         lastWord: await getLastWord(redis, roomId),
         newWord: word,
         score: ruling.score,
-        isValid: ruling.isValid,
-        isEliminated: !ruling.isValid,
+        isValid: ruling.isValid && !repeatedOccurred,
+        isEliminated: !ruling.isValid || repeatedOccurred,
         reason: eliminationReason,
       });
 
@@ -205,13 +267,13 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
     });
 
     socket.on("reconnectRoom", async ({ roomId, clientId }) => {
-      // Reconnect logic... (Kept identical to your structure)
-      if (!clientId) return socket.emit("gameError", "clientId missing");
+      const dbUserId = (await getDbUserId(socket)) ?? clientId;
+      if (!dbUserId) return socket.emit("gameError", "clientId missing");
       try {
         const gameState = await getGame(redis, roomId);
         if (!gameState) return socket.emit("gameError", "game not found");
 
-        const player = gameState.players.find((p) => p.clientId === clientId);
+        const player = gameState.players.find((p) => p.clientId === dbUserId);
         if (!player) return socket.emit("gameError", "player not found");
 
         if (pendingTimeouts.has(player.id)) {

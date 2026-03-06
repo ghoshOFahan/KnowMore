@@ -24,9 +24,6 @@ export default function Navbar() {
         href={isAuthenticated ? "/dashboard" : "/"}
         className="flex items-center gap-2 group"
       >
-        <div className="w-8 h-8 rounded-lg bg-linear-to-br from-[text-(--color-purple)] to-[text-(--color-pink)] flex items-center justify-center text-white font-bold text-lg group-hover:scale-105 transition-transform">
-          I
-        </div>
         <span className="font-bold text-xl tracking-tight text-(--color-fg)">
           Know<span className="text-(--color-purple)">More</span>
         </span>

@@ -28,9 +28,6 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <span className="inline-block px-4 py-1.5 rounded-full border border-(--color-purple)/30 bg-(--color-purple)/10 text-(--color-purple) text-sm font-medium mb-6">
-              V 1.0 // Public Beta
-            </span>
             <h1 className="text-5xl md:text-7xl font-bold leading-tight mb-6 bg-clip-text text-transparent bg-linear-to-r from-white via-white to-(--color-comment)">
               Discover Your <br />
               <span className="text-transparent bg-clip-text bg-linear-to-r from-(--color-purple) to-(--color-pink)">

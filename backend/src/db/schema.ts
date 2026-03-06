@@ -118,7 +118,7 @@ export const topicAnchors = table(
 );
 export const games = table("games", {
   id: t.integer().primaryKey().generatedAlwaysAsIdentity(),
-  roomId: t.varchar({ length: 10 }).notNull(),
+  roomId: t.varchar("room_id", { length: 10 }).notNull(),
   winnerId: t.text("winner_id").references(() => users.id),
   wordChain: t.text("word_chain").array().notNull().default([]),
   playedAt: t.timestamp("played_at").defaultNow().notNull(),
