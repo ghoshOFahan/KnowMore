@@ -14,7 +14,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../auth/authClient";
 import { getSocket, getClientId } from "../hooks/useSocket";
-import type { GameState } from "../types/socketTypes";
+import type { GameState } from "../types/game";
 
 const { useSession } = authClient;
 
