@@ -21,7 +21,7 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: yourdockerhubusername/knowmore-backend:latest
+          tags: aintlucifer/knowmore-backend:latest
 
   deploy-frontend:
     runs-on: ubuntu-latest
