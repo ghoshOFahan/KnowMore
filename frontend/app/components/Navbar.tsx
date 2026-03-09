@@ -1,13 +1,15 @@
 "use client";
 import Link from "next/link";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, LogIn } from "lucide-react";
 import { motion } from "framer-motion";
 import ThemeToggle from "./ThemeToggle";
 import { authClient } from "../auth/authClient";
+import { handleGoogleLogin } from "../page";
 const { useSession, signOut } = authClient;
 const handleLogout = async () => {
   await signOut();
 };
+
 export default function Navbar() {
   const { data: session, isPending } = useSession();
   if (isPending) return null;
@@ -51,12 +53,12 @@ export default function Navbar() {
             </button>
           </div>
         ) : (
-          <Link
-            href="/login"
+          <button
             className="px-4 py-2 rounded-lg bg-(--color-purple) hover:bg-(--color-pink) text-white text-sm font-medium transition-all"
+            onClick={handleGoogleLogin}
           >
             Sign In
-          </Link>
+          </button>
         )}
       </div>
     </motion.nav>

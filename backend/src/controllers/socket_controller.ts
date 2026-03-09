@@ -44,7 +44,7 @@ async function getDbUserId(socket: any): Promise<string | null> {
   }
 }
 
-// ✅ Insert completed game into games + gamePlayers tables
+//Insert completed game into games + gamePlayers tables
 async function persistGame(gameState: GameState, wordHistory: string[]) {
   try {
     const winnerPlayer = gameState.players.find(
@@ -232,7 +232,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
 
           io.to(roomId).emit("gameEnded", { gameState, commentary });
 
-          // ✅ Persist game to DB for stats/history
+          //Persist game to DB for stats/history
           await persistGame(gameState, fullHistory);
 
           // Hand off to BullMQ worker for analytics
