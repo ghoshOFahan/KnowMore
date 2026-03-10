@@ -23,7 +23,7 @@ interface WordEntry {
   isValid?: boolean;
 }
 
-// ✅ Check word exists in dictionary, reject spaces/sentences
+// Check word exists in dictionary, reject spaces/sentences
 async function validateWord(
   word: string,
 ): Promise<{ valid: boolean; reason?: string }> {
@@ -184,7 +184,7 @@ export default function GameArena({ params }: GameArenaProps) {
       const word = input.trim().toLowerCase();
       if (!word || !isMyTurn || isAiThinking || isValidating) return;
 
-      // ✅ Local validation first — spaces, sentences, non-letters
+      // Local validation first — spaces, sentences, non-letters
       if (/\s/.test(word)) {
         setLocalError("Only single words allowed — no spaces or sentences.");
         setTimeout(() => setLocalError(null), 3000);
@@ -196,7 +196,7 @@ export default function GameArena({ params }: GameArenaProps) {
         return;
       }
 
-      // ✅ Dictionary API check
+      // Dictionary API check
       setIsValidating(true);
       const { valid, reason } = await validateWord(word);
       setIsValidating(false);

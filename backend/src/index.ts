@@ -19,7 +19,7 @@ const host = "0.0.0.0";
 app.use(express.json()); // Required to parse req.body for REST endpoints
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: "https://knowmore.ahanghosh.site/",
     credentials: true,
   }),
 );
@@ -40,7 +40,9 @@ export const analyticsQueue = new Queue("identity-analyzer", {
 app.use("/api", apiRoutes);
 
 app.get("/", (req, res) => {
-  res.send(`<h1>hey there welcome to KnowMore!</h1>`);
+  res.send(
+    `<h1>hey there welcome to KnowMore! To go to site https://knowmore.ahanghosh.site/ </h1>`,
+  );
 });
 
 // Mount the Socket.io Server
