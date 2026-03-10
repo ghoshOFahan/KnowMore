@@ -1,0 +1,49 @@
+name: Trigger auto deployment for knowmore-backend
+
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: 
+      [ main ]
+    paths:
+    - '**'
+    - '.github/workflows/knowmore-backend-AutoDeployTrigger-21280b76-b5ef-4f8d-a1b6-273b8e809ba2.yml'
+
+  # Allow manual trigger 
+  workflow_dispatch:      
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions: 
+      id-token: write #This is required for requesting the OIDC JWT Token
+      contents: read #Required when GH token is used to authenticate with private repo
+
+    steps:
+      - name: Checkout to the branch
+        uses: actions/checkout@v2
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.KNOWMOREBACKEND_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.KNOWMOREBACKEND_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.KNOWMOREBACKEND_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push container image to registry
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}/backend
+          _dockerfilePathKey_: _dockerfilePath_
+          _targetLabelKey_: _targetLabel_
+          registryUrl: docker.io
+          registryUsername: ${{ secrets.KNOWMOREBACKEND_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.KNOWMOREBACKEND_REGISTRY_PASSWORD }}
+          containerAppName: knowmore-backend
+          resourceGroup: KnowMore
+          imageToBuild: aintlucifer/knowmore-backend:${{ github.sha }}
+          _buildArgumentsKey_: |
+            _buildArgumentsValues_
+
+
