@@ -16,6 +16,22 @@ jobs:
       - name: Checkout to the branch
         uses: actions/checkout@v2
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.KNOWMOREBACKEND_REGISTRY_USERNAME }}
+          password: ${{ secrets.KNOWMOREBACKEND_REGISTRY_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            aintlucifer/knowmore-backend:latest
+            aintlucifer/knowmore-backend:${{ github.sha }}
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -23,15 +39,12 @@ jobs:
           tenant-id: ${{ secrets.KNOWMOREBACKEND_AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.KNOWMOREBACKEND_AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push container image to registry
-        uses: azure/container-apps-deploy-action@v2
+      - name: Deploy to Azure Container Apps
+        uses: azure/cli@v2
         with:
-          appSourcePath: ${{ github.workspace }}/backend
-          dockerfilePath: Dockerfile
-          registryUrl: docker.io
-          registryUsername: ${{ secrets.KNOWMOREBACKEND_REGISTRY_USERNAME }}
-          registryPassword: ${{ secrets.KNOWMOREBACKEND_REGISTRY_PASSWORD }}
-          containerAppName: knowmore-backend
-          resourceGroup: KnowMore
-          imageToBuild: aintlucifer/knowmore-backend:${{ github.sha }}
-          imageToDeploy: aintlucifer/knowmore-backend:${{ github.sha }}
+          azcliversion: latest
+          inlineScript: |
+            az containerapp update \
+              --name knowmore-backend \
+              --resource-group KnowMore \
+              --image aintlucifer/knowmore-backend:${{ github.sha }}
