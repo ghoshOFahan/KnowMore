@@ -7,21 +7,30 @@ async function handler(request: Request) {
 
   const headers = new Headers(request.headers);
   headers.delete("host");
+  headers.set("x-forwarded-host", url.host);
+
+  let body: string | undefined;
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    try {
+      body = await request.text();
+    } catch {
+      body = undefined;
+    }
+  }
 
   const response = await fetch(targetURL, {
     method: request.method,
     headers,
-    body:
-      request.method !== "GET" && request.method !== "HEAD"
-        ? request.body
-        : undefined,
+    body,
     redirect: "manual",
   });
 
-  return new Response(response.body, {
+  const responseHeaders = new Headers(response.headers);
+
+  return new Response(response.status === 204 ? null : response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers: responseHeaders,
   });
 }
 
