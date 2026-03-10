@@ -8,8 +8,8 @@ import { authClient } from "./auth/authClient";
 export const handleGoogleLogin = async () => {
   await authClient.signIn.social({
     provider: "google",
-    callbackURL: `${window.location.origin}/onboarding`,
-    errorCallbackURL: `${window.location.origin}/login?error=google`,
+    callbackURL: `https://knowmore.ahanghosh.site/onboarding`,
+    errorCallbackURL: `https://knowmore.ahanghosh.site/login?error=google`,
   });
 };
 

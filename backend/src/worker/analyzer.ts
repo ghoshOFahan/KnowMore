@@ -163,20 +163,18 @@ export const analyticsWorker = new Worker(
 );
 
 analyticsWorker.on("completed", (job) => {
-  console.log(
-    `[Worker] ✅ Job completed for room ${job.data.gameState.roomId}`,
-  );
+  console.log(`[Worker] Job completed for room ${job.data.gameState.roomId}`);
 });
 
 analyticsWorker.on("failed", (job, err) => {
-  console.error(`[Worker] ❌ Job failed:`, err);
+  console.error(`[Worker] Job failed:`, err);
   console.error(`[Worker] Job data:`, job?.data);
 });
 
 analyticsWorker.on("active", (job) => {
-  console.log(`[Worker] 🔄 Job active:`, job.id);
+  console.log(`[Worker] Job active:`, job.id);
 });
 
 analyticsWorker.on("stalled", (jobId) => {
-  console.warn(`[Worker] ⚠️ Job stalled:`, jobId);
+  console.warn(`[Worker] Job stalled:`, jobId);
 });
