@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, AlertCircle, Sparkles, Loader2, Trophy, X } from "lucide-react";
 import { authClient } from "../../auth/authClient";
-import { useSocket, getClientId } from "../../hooks/useSocket";
+import { useSocket } from "../../hooks/useSocket";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "../../auth/ProtectedRoute";
 import type { GameState } from "../../types/game";
