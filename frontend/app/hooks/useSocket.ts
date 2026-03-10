@@ -13,10 +13,14 @@ export function getSocket(): Socket<
   ClientToServerEvents
 > {
   if (!socket) {
-    socket = io(process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3001", {
-      withCredentials: true,
-      autoConnect: true,
-    });
+    socket = io(
+      process.env.NEXT_PUBLIC_SOCKET_URL ??
+        "https://knowmore-backend.jollybay-f5e1622e.centralindia.azurecontainerapps.io",
+      {
+        withCredentials: true,
+        autoConnect: true,
+      },
+    );
   }
   return socket;
 }

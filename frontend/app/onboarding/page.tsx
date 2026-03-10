@@ -47,15 +47,12 @@ export default function Onboarding() {
     if (selected.length !== 5) return;
     setIsSubmitting(true);
     console.log(`${process.env.NEXT_PUBLIC_API_URL}`);
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ topicArray: selected }),
-      },
-    );
+    const res = await fetch(`/api/onboarding`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ topicArray: selected }),
+    });
 
     if (res.ok) {
       router.push("/dashboard");
@@ -65,7 +62,7 @@ export default function Onboarding() {
     }
   };
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`, {
+    fetch(`/api/onboarding/status`, {
       credentials: "include",
     })
       .then((res) => res.json())

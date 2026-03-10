@@ -59,7 +59,7 @@ export default function Dashboard() {
     if (!session?.user?.id) return;
 
     // Fetch radar
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/profile/radar`, {
+    fetch(`/api/profile/radar`, {
       credentials: "include",
     })
       .then((res) => res.json())
@@ -68,7 +68,7 @@ export default function Dashboard() {
       });
 
     // Fetch stats + recent games
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/profile/stats`, {
+    fetch(`/api/profile/stats`, {
       credentials: "include",
     })
       .then((res) => res.json())
@@ -108,7 +108,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* ✅ Real stats */}
+                {/* Real stats */}
                 <div className="grid grid-cols-2 gap-3 mb-6">
                   <div className="p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-line)]">
                     <div className="text-[var(--color-comment)] text-xs mb-1">
@@ -133,7 +133,7 @@ export default function Dashboard() {
                 </button>
               </motion.div>
 
-              {/* ✅ Recent Games — real data */}
+              {/* Recent Games — real data */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -194,9 +194,7 @@ export default function Dashboard() {
               </motion.div>
             </div>
 
-            {/* Right Column */}
             <div className="lg:col-span-8 space-y-6">
-              {/* Play CTA */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

@@ -1,4 +1,3 @@
-// app/api/auth/[...catchall]/route.ts
 const BACKEND_URL =
   "https://knowmore-backend.jollybay-f5e1622e.centralindia.azurecontainerapps.io";
 
