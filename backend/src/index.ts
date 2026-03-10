@@ -19,7 +19,7 @@ const host = "0.0.0.0";
 app.use(express.json()); // Required to parse req.body for REST endpoints
 app.use(
   cors({
-    origin: "https://knowmore.ahanghosh.site/",
+    origin: "https://knowmore.ahanghosh.site",
     credentials: true,
   }),
 );
