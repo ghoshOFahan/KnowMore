@@ -10,6 +10,16 @@ export const auth = betterAuth({
   trustedOrigins: [process.env.FRONTEND_URL!],
   trustHost: true,
   baseRedirectURI: process.env.FRONTEND_URL,
+  advanced: {
+    crossSubdomainCookies: {
+      enabled: false,
+    },
+    defaultCookieAttributes: {
+      sameSite: "none",
+      secure: true,
+      partitioned: true,
+    },
+  },
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,
