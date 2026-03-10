@@ -34,3 +34,4 @@ jobs:
           containerAppName: knowmore-backend
           resourceGroup: KnowMore
           imageToBuild: aintlucifer/knowmore-backend:${{ github.sha }}
+          imageToDeploy: aintlucifer/knowmore-backend:${{ github.sha }}
