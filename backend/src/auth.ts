@@ -5,9 +5,9 @@ import { db } from "./db/db.js";
 import * as schema from "./db/schema.js";
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL: "https://knowmore.ahanghosh.site/api/auth",
   secret: process.env.BETTER_AUTH_SECRET!,
-  trustedOrigins: [process.env.FRONTEND_URL!],
+  trustedOrigins: ["https://knowmore.ahanghosh.site"],
   trustHost: true,
   baseRedirectURI: process.env.FRONTEND_URL,
   advanced: {
