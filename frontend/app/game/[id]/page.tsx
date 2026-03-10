@@ -66,7 +66,7 @@ async function validateWord(
 export default function GameArena({ params }: GameArenaProps) {
   const { id: roomId } = React.use(params);
 
-  const { data: session } = useSession();
+  const { data: session, isPending } = useSession();
   const socket = useSocket();
   const router = useRouter();
 
@@ -98,9 +98,9 @@ export default function GameArena({ params }: GameArenaProps) {
 
   // Attempt reconnect on mount in case of page refresh
   useEffect(() => {
-    const clientId = getClientId();
-    socket.emit("reconnectRoom", { roomId, clientId });
-  }, [roomId, socket]);
+    if (isPending || !session?.user?.id) return;
+    socket.emit("reconnectRoom", { roomId, clientId: session?.user.id });
+  }, [roomId, socket, session, isPending]);
 
   // Socket event listeners
   useEffect(() => {
@@ -214,9 +214,16 @@ export default function GameArena({ params }: GameArenaProps) {
   );
 
   const handleLeave = () => {
-    const clientId = getClientId();
-    socket.emit("leaveRoom", { roomId, clientId });
-    router.push("/dashboard");
+    const handleLeave = () => {
+      if (!session?.user?.id) return;
+
+      // Pass the REAL database UUID when leaving
+      socket.emit("leaveRoom", {
+        roomId,
+        clientId: session.user.id,
+      });
+      router.push("/dashboard");
+    };
   };
 
   const lastWord = wordHistory[wordHistory.length - 1]?.word ?? null;

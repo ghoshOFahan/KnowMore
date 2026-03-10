@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import type {
   ServerToClientEvents,
@@ -34,15 +33,4 @@ export function disconnectSocket() {
 
 export function useSocket() {
   return getSocket();
-}
-
-// Stable clientId that persists across reconnects
-export function getClientId(): string {
-  if (typeof window === "undefined") return "ssr";
-  let id = localStorage.getItem("km_client_id");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("km_client_id", id);
-  }
-  return id;
 }

@@ -13,7 +13,7 @@ import {
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../auth/authClient";
-import { getSocket, getClientId } from "../hooks/useSocket";
+import { getSocket } from "../hooks/useSocket";
 import type { GameState } from "../types/game";
 
 const { useSession } = authClient;
@@ -35,20 +35,18 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
   const [error, setError] = useState<string | null>(null);
 
   const handleStart = () => {
-    if (!selectedMode) return;
+    if (!selectedMode || !session?.user?.id) return;
     setError(null);
     setIsLoading(true);
 
     const socket = getSocket();
-    const clientId = getClientId();
+    const clientId = session.user.id;
     const username = session?.user?.name ?? "Anonymous";
 
-    // Clean up any previous listeners to avoid duplicates
     socket.off("gameStateUpdate");
     socket.off("gameError");
 
     if (selectedMode === "multiplayer") {
-      // Listen for room creation confirmation
       socket.once("gameStateUpdate", (gameState: GameState) => {
         setIsLoading(false);
         onClose();
@@ -89,8 +87,6 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
         clientId,
       });
     } else if (selectedMode === "ai") {
-      // AI mode — create a room tagged as AI, navigate immediately
-      // Backend can detect single-player rooms and simulate AI turns
       socket.once("gameStateUpdate", (gameState: GameState) => {
         setIsLoading(false);
         onClose();
@@ -104,7 +100,7 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
 
       socket.emit("createRoom", {
         username,
-        maxPlayers: 2, // AI + player
+        maxPlayers: 2,
         clientId,
       });
     }
@@ -160,7 +156,6 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-[var(--color-bg)] border border-[var(--color-line)] rounded-2xl shadow-2xl z-[70] p-8 overflow-hidden"
           >
-            {/* Background Gradients */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--color-purple)]/10 blur-[100px] pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-[var(--color-pink)]/10 blur-[100px] pointer-events-none" />
 
@@ -213,7 +208,6 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                 ))}
               </div>
 
-              {/* Player count slider — multiplayer only */}
               <AnimatePresence>
                 {selectedMode === "multiplayer" && (
                   <motion.div
@@ -295,7 +289,6 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                         </button>
                       </div>
 
-                      {/* Player dot previews */}
                       <div className="flex items-center gap-2 mt-6">
                         {Array.from({ length: 7 }).map((_, i) => (
                           <motion.div
@@ -324,7 +317,6 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                 )}
               </AnimatePresence>
 
-              {/* Join Room input — only shown when join is selected */}
               <AnimatePresence>
                 {selectedMode === "join" && (
                   <motion.div
@@ -346,7 +338,6 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                 )}
               </AnimatePresence>
 
-              {/* Error message */}
               <AnimatePresence>
                 {error && (
                   <motion.p

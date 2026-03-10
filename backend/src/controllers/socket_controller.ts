@@ -53,7 +53,6 @@ async function persistGame(gameState: GameState, wordHistory: string[]) {
     const winnerId = winnerPlayer?.clientId ?? null;
 
     // Count words per player by looking at who submitted (tracked via word index / turn order)
-    // Simple approach: equal split — you can make this smarter later
     const wordCounts: Record<string, number> = {};
     gameState.players.forEach((p) => (wordCounts[p.clientId] = 0));
 
