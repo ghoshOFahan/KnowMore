@@ -1,5 +1,7 @@
 # KnowMore — AI-Backed Semantic Profiling Platform
 
+[![gitcgr](https://gitcgr.com/badge/ghoshOFahan/Knowmore.svg)](https://gitcgr.com/ghoshOFahan/Knowmore)
+
 > **Live:** [knowmore.ahanghosh.site](https://knowmore.ahanghosh.site)
 
 KnowMore is a cloud-native, real-time multiplayer platform that uses semantic word-chain gameplay to build deep user interest profiles. Unlike traditional games, every word you play is analyzed for its **semantic gravity** — its conceptual distance from your established interest anchors — to continuously calibrate a personal knowledge map.
