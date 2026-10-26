@@ -100,15 +100,18 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
     },
   });
 
+  io.use(async (socket, next) => {
+    const userId = await getDbUserId(socket);
+    if (!userId) return next(new Error("Unauthorized"));
+    socket.data.userId = userId;
+    next();
+  });
+
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
 
-    socket.on("createRoom", async ({ username, maxPlayers, clientId }) => {
-      const dbUserId = (await getDbUserId(socket)) ?? clientId;
-      if (!dbUserId) {
-        socket.emit("gameError", "clientId missing");
-        return;
-      }
+    socket.on("createRoom", async ({ username, maxPlayers }) => {
+      const dbUserId = socket.data.userId;
       const roomId = generateRoomId();
       const newGame: GameState = {
         roomId,
@@ -125,9 +128,8 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       socket.emit("gameStateUpdate", newGame);
     });
 
-    socket.on("joinRoom", async ({ username, roomId, clientId }) => {
-      const dbUserId = (await getDbUserId(socket)) ?? clientId;
-      if (!dbUserId) return socket.emit("gameError", "clientId missing");
+    socket.on("joinRoom", async ({ username, roomId }) => {
+      const dbUserId = socket.data.userId;
 
       const gameState = await getGame(redis, roomId);
       if (gameState === null) return socket.emit("gameError", "game not found");
@@ -263,9 +265,8 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
     });
 
-    socket.on("reconnectRoom", async ({ roomId, clientId }) => {
-      const dbUserId = (await getDbUserId(socket)) ?? clientId;
-      if (!dbUserId) return socket.emit("gameError", "clientId missing");
+    socket.on("reconnectRoom", async ({ roomId }) => {
+      const dbUserId = socket.data.userId;
       try {
         const gameState = await getGame(redis, roomId);
         if (!gameState) return socket.emit("gameError", "game not found");
@@ -320,8 +321,8 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       await redis.del(SOCKET_ROOM_KEY(socketId));
     }
 
-    socket.on("leaveRoom", async ({ roomId, clientId }) => {
-      if (!clientId) return socket.emit("gameError", "clientId missing");
+    socket.on("leaveRoom", async ({ roomId }) => {
+      const clientId = socket.data.userId;
       try {
         const gameState = await getGame(redis, roomId);
         if (!gameState) return;
