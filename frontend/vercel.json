@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "BACKEND_URL": "https://api.ahanghosh.me",
+    "NEXT_PUBLIC_SOCKET_URL": "https://api.ahanghosh.me"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_SOCKET_URL": "https://api.ahanghosh.me"
+    }
+  }
+}

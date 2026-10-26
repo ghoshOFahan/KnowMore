@@ -28,9 +28,7 @@ import type {
   SocketData,
 } from "../types/socket.js";
 
-const redis = new Redis(process.env.REDIS_URL!, {
-  tls: { rejectUnauthorized: false },
-});
+const redis = new Redis(process.env.REDIS_URL!);
 const pendingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
 async function getDbUserId(socket: any): Promise<string | null> {
@@ -96,7 +94,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
     SocketData
   >(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL,
+      origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
       methods: ["GET", "POST"],
       credentials: true,
     },

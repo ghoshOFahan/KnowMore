@@ -1,6 +1,9 @@
-import { pgTable as table, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgSchema, primaryKey, index } from "drizzle-orm/pg-core";
 import * as t from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+
+export const knowmoreSchema = pgSchema("knowmore");
+const table = knowmoreSchema.table;
 
 export const users = table("users", {
   id: t.text("id").primaryKey(),

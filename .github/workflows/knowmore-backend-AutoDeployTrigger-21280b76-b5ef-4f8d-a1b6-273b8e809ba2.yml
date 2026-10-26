@@ -1,4 +1,4 @@
-name: Trigger auto deployment for knowmore-backend
+name: Build and deploy KnowMore backend
 
 on:
   push:
@@ -9,12 +9,9 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
-
     steps:
-      - name: Checkout to the branch
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -23,7 +20,7 @@ jobs:
           password: ${{ secrets.KNOWMOREBACKEND_REGISTRY_PASSWORD }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./backend
           file: ./backend/Dockerfile
@@ -32,19 +29,16 @@ jobs:
             aintlucifer/knowmore-backend:latest
             aintlucifer/knowmore-backend:${{ github.sha }}
 
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.KNOWMOREBACKEND_AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.KNOWMOREBACKEND_AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.KNOWMOREBACKEND_AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy to Azure Container Apps
-        uses: azure/cli@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            az containerapp update \
-              --name knowmore-backend \
-              --resource-group KnowMore \
-              --image aintlucifer/knowmore-backend:${{ github.sha }}
+      - name: Deploy to Lightsail
+        env:
+          SSH_HOST: ${{ secrets.KNOWMORE_SSH_HOST }}
+          SSH_KEY: ${{ secrets.KNOWMORE_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEY: ${{ secrets.KNOWMORE_SSH_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/knowmore
+          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/knowmore ~/.ssh/known_hosts
+          scp -i ~/.ssh/knowmore -o StrictHostKeyChecking=yes docker-compose.yml Caddyfile "ubuntu@$SSH_HOST:/opt/knowmore/"
+          ssh -i ~/.ssh/knowmore -o StrictHostKeyChecking=yes "ubuntu@$SSH_HOST" 'cd /opt/knowmore && docker compose pull && docker compose up -d'
