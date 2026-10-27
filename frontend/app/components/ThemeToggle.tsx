@@ -15,13 +15,12 @@ export default function ThemeToggle() {
 
   return (
     <button
-      onClick={() => {
-        setTheme(isDracula ? "tokyo" : "dracula");
-      }}
-      className="flex items-center gap-2 px-4 py-2 rounded-full border transition-all border-(--color-line) bg-(--color-bg) text-(--color-fg) hover:border-(--color-purple)"
-      // className="flex items-center gap-2 px-4 py-2 rounded-full border transition-all border-(--color-line) bg-(--color-bg) text-(--color-fg) hover:border-(--color-purple)"
+      aria-label="Switch color theme"
+      onClick={() => setTheme(isDracula ? "tokyo" : "dracula")}
+      className="km-nav-link flex items-center gap-2"
     >
-      {isDracula ? <Moon size={16} /> : <Sun size={16} />}
+      {isDracula ? <Moon size={15} /> : <Sun size={15} />}
+      <span>Theme</span>
     </button>
   );
 }

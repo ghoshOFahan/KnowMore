@@ -8,6 +8,13 @@
       "when": 1771969956942,
       "tag": "0000_fair_colonel_america",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793160000000,
+      "tag": "0001_player_interest_trails",
+      "breakpoints": true
     }
   ]
 }

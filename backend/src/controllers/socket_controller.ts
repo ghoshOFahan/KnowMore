@@ -13,7 +13,9 @@ import {
   getLastWord,
   pushWord,
   getWords,
+  getWordAuthors,
   WORD_HISTORY_KEY,
+  WORD_AUTHORS_KEY,
   findWord,
 } from "./redis_helper.js";
 import { judgeWords } from "../ai/judge.js";
@@ -43,16 +45,23 @@ async function getDbUserId(socket: any): Promise<string | null> {
 }
 
 //Insert completed game into games + gamePlayers tables
-async function persistGame(gameState: GameState, wordHistory: string[]) {
+async function persistGame(gameState: GameState, wordHistory: string[], wordAuthors: string[]) {
   try {
     const winnerPlayer = gameState.players.find(
       (p) => p.username === gameState.winner,
     );
     const winnerId = winnerPlayer?.clientId ?? null;
 
-    // Count words per player by looking at who submitted (tracked via word index / turn order)
+    // Attribute each accepted word to the player who submitted it.
     const wordCounts: Record<string, number> = {};
     gameState.players.forEach((p) => (wordCounts[p.clientId] = 0));
+    const wordTrails: Record<string, string[]> = {};
+    wordHistory.forEach((word, index) => {
+      const userId = wordAuthors[index];
+      if (!userId) return;
+      (wordTrails[userId] ??= []).push(word);
+      wordCounts[userId] = (wordCounts[userId] ?? 0) + 1;
+    });
 
     // Insert game row
     const [insertedGame] = await db
@@ -73,6 +82,7 @@ async function persistGame(gameState: GameState, wordHistory: string[]) {
         userId: p.clientId,
         isEliminated: p.isEliminated ?? false,
         wordsContributed: wordCounts[p.clientId] ?? 0,
+        wordTrail: wordTrails[p.clientId] ?? [],
         rank: p.isEliminated ? idx + 2 : 1, // winner = rank 1
       })),
     );
@@ -80,9 +90,11 @@ async function persistGame(gameState: GameState, wordHistory: string[]) {
     console.log(
       `[DB] Game ${gameState.roomId} persisted, id: ${insertedGame.id}`,
     );
+    return insertedGame.id;
   } catch (err) {
     // Non-fatal — analytics still runs, game still ends
     console.error("[DB] Failed to persist game:", err);
+    return null;
   }
 }
 
@@ -191,7 +203,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       }
 
       if (ruling.isValid && !repeatedOccurred) {
-        await pushWord(redis, roomId, word);
+        await pushWord(redis, roomId, word, playerObject!.clientId);
         gameState.currentPlayerId = getNextActivePlayerId(
           gameState.players,
           playerId,
@@ -213,6 +225,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
           await setGame(redis, roomId, gameState);
 
           const fullHistory = await getWords(redis, roomId);
+          const wordAuthors = await getWordAuthors(redis, roomId);
           const lastValidWord = await getLastWord(redis, roomId);
 
           const gameSummary = `
@@ -232,11 +245,17 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
           io.to(roomId).emit("gameEnded", { gameState, commentary });
 
           //Persist game to DB for stats/history
-          await persistGame(gameState, fullHistory);
+          const gameId = await persistGame(gameState, fullHistory, wordAuthors);
 
           // Hand off to BullMQ worker for analytics
           const mergedState = { ...gameState, wordHistory: fullHistory };
-          await analyticsQueue.add("analyze-game", { gameState: mergedState });
+          if (gameId !== null) {
+            await analyticsQueue.add("analyze-game", {
+              gameId,
+              gameState: mergedState,
+              wordAuthors,
+            });
+          }
         } else {
           gameState.currentPlayerId = getNextActivePlayerId(
             gameState.players,
@@ -307,6 +326,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       if (updatedPlayers.length === 0) {
         await redis.del(GAME_SET_KEY(roomId));
         await redis.del(WORD_HISTORY_KEY(roomId));
+        await redis.del(WORD_AUTHORS_KEY(roomId));
       } else {
         gameState.players = updatedPlayers;
         if (gameState.currentPlayerId === socketId) {

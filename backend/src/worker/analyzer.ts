@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { Redis } from "ioredis";
 import { db } from "../db/db.js";
-import { topicAnchors, topics } from "../db/schema.js";
+import { topicAnchors, topics, gamePlayers } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { embedWord, cosineSimilarity } from "../ai/embeddingJudge.js";
 import type { GameState } from "../types/game.js";
@@ -20,10 +20,11 @@ redisConnection.on("error", (err) =>
 
 export const analyticsWorker = new Worker(
   "identity-analyzer",
-  async (job: Job<{ gameState: GameState }>) => {
+  async (job: Job<{ gameState: GameState; gameId: number; wordAuthors: string[] }>) => {
     console.log("[Worker] Job received, id:", job.id);
 
     const { gameState } = job.data;
+    const { gameId, wordAuthors } = job.data;
     const { wordHistory, players } = gameState;
 
     console.log("[Worker] roomId:", gameState.roomId);
@@ -93,8 +94,11 @@ export const analyticsWorker = new Worker(
       const scoreUpdates: Record<number, number> = {};
       userAnchors.forEach((a) => (scoreUpdates[a.topicId] = 0));
 
-      // Measure gravity
+      const playerScores: Record<string, number> = {};
+
+      // Measure only this player's accepted words, not the whole table's trail.
       for (let i = 0; i < wordHistory.length; i++) {
+        if (wordAuthors[i] !== userId) continue;
         const wordVec = wordVectors[i];
         if (!wordVec || wordVec.length === 0) continue;
 
@@ -117,6 +121,8 @@ export const analyticsWorker = new Worker(
         if (highestSim > 0.35 && bestTopicId !== -1) {
           scoreUpdates[bestTopicId] =
             (scoreUpdates[bestTopicId] ?? 0) + highestSim * 10;
+          const topicName = userAnchors.find((a) => a.topicId === bestTopicId)?.name;
+          if (topicName) playerScores[topicName] = (playerScores[topicName] ?? 0) + highestSim;
         }
       }
 
@@ -150,6 +156,11 @@ export const analyticsWorker = new Worker(
           );
         }
       }
+
+      await db
+        .update(gamePlayers)
+        .set({ anchorScores: playerScores })
+        .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)));
     }
 
     console.log("[Worker] Job complete for room:", gameState.roomId);

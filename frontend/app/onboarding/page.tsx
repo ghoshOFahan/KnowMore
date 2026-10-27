@@ -1,162 +1,124 @@
 "use client";
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
-import { Check, ArrowRight } from "lucide-react";
-import ProtectedRoute from "../auth/ProtectedRoute";
 
-const TOPICS = [
-  "Space",
-  "Philosophy",
-  "Nature",
-  "Technology",
-  "Chaos",
-  "Logic",
-  "Emotion",
-  "History",
-  "Future",
-  "Art",
-  "War",
-  "Peace",
-  "Biology",
-  "Code",
-  "Music",
-  "Ocean",
-  "Mind",
-  "Power",
-  "Silence",
-  "Time",
-];
+import { type FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, RotateCcw } from "lucide-react";
+import ProtectedRoute from "../auth/ProtectedRoute";
+import Navbar from "../components/Navbar";
+
+const CUES = ["bridge", "mirror", "seed", "current", "echo"];
 
 export default function Onboarding() {
   const router = useRouter();
-  const [selected, setSelected] = useState<string[]>([]);
+  const [words, setWords] = useState<string[]>([]);
+  const [answer, setAnswer] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checking, setChecking] = useState(true);
-  const toggleTopic = (topic: string) => {
-    if (selected.includes(topic)) {
-      setSelected(selected.filter((t) => t !== topic));
-    } else {
-      if (selected.length < 5) {
-        setSelected([...selected, topic]);
-      }
-    }
-  };
+  const [error, setError] = useState("");
 
-  const handleSubmit = async () => {
-    if (selected.length !== 5) return;
-    setIsSubmitting(true);
-    console.log(`${process.env.NEXT_PUBLIC_API_URL}`);
-    const res = await fetch(`/api/onboarding`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ topicArray: selected }),
-    });
-
-    if (res.ok) {
-      router.push("/dashboard");
-    } else {
-      setIsSubmitting(false);
-      console.log("Onboarding request failed!");
-    }
-  };
   useEffect(() => {
-    fetch(`/api/onboarding/status`, {
-      credentials: "include",
-    })
+    fetch("/api/onboarding/status", { credentials: "include" })
       .then((res) => res.json())
       .then((data) => {
-        if (data.hasOnboarded) {
-          router.push(`${window.location.origin}/dashboard`);
-        } else {
-          setChecking(false);
-        }
-      });
+        if (data.hasOnboarded) router.push("/dashboard");
+        else setChecking(false);
+      })
+      .catch(() => setChecking(false));
   }, [router]);
 
+  const saveMap = async (associationWords: string[]) => {
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ associations: CUES.map((cue, index) => ({ cue, word: associationWords[index] })) }),
+      });
+      if (!res.ok) throw new Error("We couldn't read those associations. Please try again.");
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAnswer = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const word = answer.trim().toLowerCase();
+    if (!/^[a-z]+$/.test(word)) {
+      setError("Use one word made of letters, then keep going.");
+      return;
+    }
+    const nextWords = [...words, word];
+    setWords(nextWords);
+    setAnswer("");
+    setError("");
+    if (nextWords.length === CUES.length) void saveMap(nextWords);
+  };
+
+  const restart = () => {
+    setWords([]);
+    setAnswer("");
+    setError("");
+  };
+
   if (checking) return null;
+  const cue = CUES[words.length];
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-(--color-bg) flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-10"
-          >
-            <h1 className="text-3xl font-bold text-(--color-fg) mb-3">
-              Calibrate Your Engine
-            </h1>
-            <p className="text-(--color-comment)">
-              Select exactly 5 topics that resonate with you. <br /> These will
-              become the anchors of your semantic map.
-            </p>
-          </motion.div>
+      <div className="km-page">
+        <Navbar />
+        <main className="km-onboarding km-discovery">
+          <p className="km-kicker">A quick word trail</p>
+          <h1>Let your words build your map</h1>
+          <p className="km-lede">
+            Give the first word that comes to mind for each cue. We’ll use those associations to choose starting topics for your map.
+          </p>
 
-          <motion.div
-            className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10"
-            initial="hidden"
-            animate="visible"
-            variants={{
-              visible: { transition: { staggerChildren: 0.05 } },
-            }}
-          >
-            {TOPICS.map((topic) => {
-              const isSelected = selected.includes(topic);
-              const isFull = selected.length >= 5 && !isSelected;
+          <div className="km-discovery-progress" aria-label={`${words.length} of five associations`}>{CUES.map((item, index) => (
+            <span key={item} className={index < words.length ? "complete" : index === words.length ? "current" : ""} />
+          ))}</div>
 
-              return (
-                <motion.button
-                  key={topic}
-                  variants={{
-                    hidden: { opacity: 0, scale: 0.8 },
-                    visible: { opacity: 1, scale: 1 },
-                  }}
-                  onClick={() => toggleTopic(topic)}
-                  disabled={isFull}
-                  className={`
-                  relative py-3 px-4 rounded-xl border font-medium text-sm transition-all duration-200
-                  ${
-                    isSelected
-                      ? "bg-(--color-purple) border-(--color-purple) text-white shadow-[0_0_15px_rgba(139,92,246,0.5)]"
-                      : "bg-(--color-line)/20 border-(--color-line) text-(--color-comment) hover:bg-(--color-line)/50"
-                  }
-                  ${isFull ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}
-                `}
-                >
-                  <div className="flex items-center justify-between">
-                    {topic}
-                    {isSelected && <Check size={14} />}
-                  </div>
-                </motion.button>
-              );
-            })}
-          </motion.div>
-
-          <div className="flex justify-between items-center border-t border-[var(--color-line)] pt-6">
-            <span className="text-[var(--color-comment)] text-sm">
-              {selected.length} / 5 Selected
-            </span>
-
-            <button
-              onClick={handleSubmit}
-              disabled={selected.length !== 5 || isSubmitting}
-              className={`
-              flex items-center gap-2 px-8 py-3 rounded-xl font-bold transition-all
-              ${
-                selected.length === 5
-                  ? "bg-[var(--color-fg)] text-[var(--color-bg)] hover:scale-105"
-                  : "bg-[var(--color-line)] text-[var(--color-comment)] cursor-not-allowed"
-              }
-            `}
-            >
-              {isSubmitting ? "Calibrating..." : "Initialize Profile"}
-              {!isSubmitting && <ArrowRight size={18} />}
-            </button>
-          </div>
-        </div>
+          {cue ? (
+            <form className="km-discovery-card" onSubmit={handleAnswer}>
+              <span className="km-muted">What word comes to mind when you see</span>
+              <strong className="km-discovery-cue">{cue}?</strong>
+              <label className="sr-only" htmlFor="association-word">Your one-word association</label>
+              <input
+                id="association-word"
+                autoFocus
+                autoComplete="off"
+                maxLength={32}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                placeholder="Type the first word that comes to mind"
+                className="km-input"
+                disabled={isSubmitting}
+              />
+              {error && <p className="km-error" role="alert">{error}</p>}
+              <button className="km-button" type="submit" disabled={!answer.trim() || isSubmitting}>
+                {words.length === CUES.length - 1 ? "Build my map" : "Next cue"}
+                <ArrowRight size={16} />
+              </button>
+              {words.length > 0 && <p className="km-muted km-discovery-last">Your trail so far: {words.join(" → ")}</p>}
+            </form>
+          ) : (
+            <div className="km-discovery-card km-discovery-done">
+              <span className="km-muted">Your associations</span>
+              <div className="km-discovery-trail">{CUES.map((item, index) => <span key={item}>{item} <b>→</b> {words[index]}</span>)}</div>
+              <p>{isSubmitting ? "Finding the topics your trail connects with…" : "Your map is ready."}</p>
+              {error && <p className="km-error" role="alert">{error}</p>}
+              {!isSubmitting && <div className="flex flex-wrap justify-center gap-2">
+                {error && <button className="km-button" type="button" onClick={() => void saveMap(words)}>Try saving again</button>}
+                <button className="km-button-secondary" type="button" onClick={restart}><RotateCcw size={15} /> Try another trail</button>
+              </div>}
+            </div>
+          )}
+          <p className="km-discovery-privacy">Your map is based on your own words and accepted game turns. It helps personalize your KnowMore experience and is private to your account.</p>
+        </main>
       </div>
     </ProtectedRoute>
   );

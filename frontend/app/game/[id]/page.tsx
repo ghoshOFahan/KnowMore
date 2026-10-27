@@ -7,6 +7,7 @@ import { authClient } from "../../auth/authClient";
 import { useSocket } from "../../hooks/useSocket";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "../../auth/ProtectedRoute";
+import Navbar from "../../components/Navbar";
 import type { GameState } from "../../types/game";
 
 const { useSession } = authClient;
@@ -232,241 +233,68 @@ export default function GameArena({ params }: GameArenaProps) {
 
   return (
     <ProtectedRoute>
-      <div className="h-screen bg-[var(--color-bg)] text-[var(--color-fg)] flex flex-col overflow-hidden">
-        {/* Game Header */}
-        <header className="h-16 border-b border-[var(--color-line)] flex items-center justify-between px-6 bg-[var(--color-bg)]/80 backdrop-blur shrink-0">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-2 h-2 rounded-full animate-pulse ${
-                gameState?.status === "INGAME"
-                  ? "bg-[var(--color-green)]"
-                  : "bg-[var(--color-comment)]"
-              }`}
-            />
-            <span className="font-mono text-sm tracking-wider text-[var(--color-comment)]">
-              ROOM: {roomId}
-            </span>
-            {gameState && (
-              <span className="text-xs px-2 py-0.5 rounded-full border border-[var(--color-line)] text-[var(--color-comment)]">
-                {activePlayers.length}/{gameState.maxPlayers} active
-              </span>
-            )}
+      <div className="km-page">
+        <Navbar />
+        <main className="km-content" style={{ paddingTop: 4 }}>
+          <div className="km-game-top">
+            <div><small className="km-muted block">Room</small><b>{roomId}</b></div>
+            <div className="text-right"><small className="km-muted block">{gameState ? `${activePlayers.length}/${gameState.maxPlayers} active` : "Connecting"}</small><b>{gameState?.players.find((player) => player.id !== gameState.currentPlayerId)?.username ?? "Opponent"}</b></div>
           </div>
+          <div className="km-game-progress"><motion.div key={lastWord} initial={{ width: "100%" }} animate={{ width: "0%" }} transition={{ duration: 15, ease: "linear" }} /></div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-2">
-              {gameState?.players.map((p) => (
-                <div
-                  key={p.clientId}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs border ${
-                    p.isEliminated
-                      ? "border-[var(--color-red)]/30 text-[var(--color-red)]/50 line-through"
-                      : p.id === gameState.currentPlayerId
-                        ? "border-[var(--color-purple)] text-[var(--color-purple)] bg-[var(--color-purple)]/10"
-                        : "border-[var(--color-line)] text-[var(--color-comment)]"
-                  }`}
-                >
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      p.isEliminated
-                        ? "bg-[var(--color-red)]"
-                        : "bg-[var(--color-green)]"
-                    }`}
-                  />
-                  {p.username}
-                </div>
-              ))}
-            </div>
+          {gameState?.status === "LOBBY" ? (
+            <section className="km-room km-card text-center">
+              <p className="km-kicker">Multiplayer</p>
+              <h1 className="m-0">Room ready</h1>
+              <p className="km-muted">Share this code with your opponent.</p>
+              <div className="km-room-code">{roomId}</div>
+              <p className="km-muted"><span className="km-pulse" />Waiting for an opponent to join</p>
+              <p className="km-muted">{gameState.players.length} / {gameState.maxPlayers} players joined</p>
+              <div className="flex justify-center gap-3 mt-5">
+                <button className="km-button-gold" onClick={() => navigator.clipboard.writeText(roomId).catch(() => {})}>Copy room code</button>
+                <button className="km-button-secondary" onClick={handleLeave}>Cancel</button>
+              </div>
+            </section>
+          ) : (
+          <div className="km-game-layout">
+            <section className="km-game-board" aria-label="Word trail">
+              <div ref={scrollRef} className="km-word-list">
+                {wordHistory.length === 0 && (
+                  <p className="km-muted text-center mt-20">{gameState?.status === "INGAME" ? (isMyTurn ? "You go first — type any word to start." : "Waiting for the first word…") : "Connecting to the room…"}</p>
+                )}
+                {wordHistory.map((move) => (
+                  <motion.div key={move.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`km-word-row ${move.isMe ? "mine" : ""}`}>
+                    <div><small className="km-muted block">{move.playerName}</small><span className={`km-word-tile ${move.isMe ? "" : "opponent"} ${move.isValid === false ? "invalid" : ""}`}>{move.word}</span></div>
+                  </motion.div>
+                ))}
+                <AnimatePresence>
+                  {isBusy && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="km-muted"><Sparkles size={15} className="inline mr-2" />{isValidating ? "Checking the word…" : "The judge is thinking…"}</motion.p>}
+                </AnimatePresence>
+              </div>
+            </section>
 
-            <button
-              onClick={handleLeave}
-              className="p-2 rounded-lg hover:bg-[var(--color-line)] text-[var(--color-comment)] hover:text-[var(--color-red)] transition-colors"
-            >
-              <X size={18} />
-            </button>
+            <aside className="km-card km-game-sidebar">
+              <div className="km-player-list">
+                {gameState?.players.map((player) => (
+                  <div key={player.clientId} className={`km-game-status ${player.id === gameState.currentPlayerId ? "active" : ""} ${player.isEliminated ? "eliminated" : ""}`}>
+                    <b>{player.username}</b><small className="km-muted block">{player.isEliminated ? "Out of the chain" : player.id === gameState.currentPlayerId ? "Their turn" : "In the match"}</small>
+                  </div>
+                ))}
+                {!gameState?.players.length && <p className="km-muted">Players will appear here when the room connects.</p>}
+              </div>
+
+              <h2 className="km-game-prompt">{lastWord ? <>Connect to <span>{lastWord}</span></> : "Start the trail"}</h2>
+              <form onSubmit={handleSubmit} className="km-word-form">
+                <input autoFocus value={input} onChange={(e) => { setInput(e.target.value); if (localError) setLocalError(null); }} disabled={!isMyTurn || isBusy || gameState?.status !== "INGAME"} placeholder={!isMyTurn ? "Waiting for your turn" : isValidating ? "Checking word…" : isAiThinking ? "The judge is thinking" : "Type a word"} className="km-input" />
+                <button type="submit" disabled={!input.trim() || !isMyTurn || isBusy} className="km-button">{isValidating ? <Loader2 size={18} className="animate-spin" /> : <Send size={17} />} Play</button>
+              </form>
+              {localError && <p className="km-error"><AlertCircle size={15} />{localError}</p>}
+              {lastRuling && !lastRuling.isValid && <p className="km-error"><AlertCircle size={15} />{lastRuling.reason}</p>}
+              <p className="km-muted text-sm mt-3">{isMyTurn ? "Your turn" : "Waiting for your turn"}</p>
+              <button onClick={handleLeave} className="km-button-secondary mt-5">Leave match <X size={15} /></button>
+            </aside>
           </div>
-        </header>
-
-        {/* Waiting for players overlay */}
-        {gameState?.status === "LOBBY" && (
-          <div className="absolute inset-0 z-20 bg-[var(--color-bg)]/90 backdrop-blur flex flex-col items-center justify-center gap-4">
-            <Loader2
-              size={40}
-              className="animate-spin text-[var(--color-purple)]"
-            />
-            <p className="text-lg font-bold">Waiting for players...</p>
-            <p className="text-sm text-[var(--color-comment)]">
-              Share room code:{" "}
-              <span className="font-mono text-[var(--color-fg)] text-lg tracking-widest">
-                {roomId}
-              </span>
-            </p>
-            <p className="text-xs text-[var(--color-comment)]">
-              {gameState.players.length}/{gameState.maxPlayers} joined
-            </p>
-          </div>
-        )}
-
-        {/* Main Game Area */}
-        <main className="flex-1 max-w-2xl mx-auto w-full flex flex-col p-4 relative overflow-hidden">
-          {/* Timer Bar */}
-          {gameState?.status === "INGAME" && (
-            <div className="absolute top-0 left-0 w-full h-1 bg-[var(--color-line)]">
-              <motion.div
-                key={lastWord}
-                initial={{ width: "100%" }}
-                animate={{ width: "0%" }}
-                transition={{ duration: 15, ease: "linear" }}
-                className="h-full bg-[var(--color-purple)]"
-              />
-            </div>
           )}
-
-          {/* Word Chain */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto space-y-4 py-6 px-2 scroll-smooth"
-          >
-            {wordHistory.length === 0 && gameState?.status === "INGAME" && (
-              <div className="flex justify-center items-center h-full">
-                <p className="text-[var(--color-comment)] text-sm">
-                  {isMyTurn
-                    ? "You go first — type any word to start."
-                    : "Waiting for the first word..."}
-                </p>
-              </div>
-            )}
-
-            {wordHistory.map((move) => (
-              <motion.div
-                key={move.id}
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className={`flex ${move.isMe ? "justify-end" : "justify-start"}`}
-              >
-                <div className="flex flex-col gap-1 max-w-[70%]">
-                  <span
-                    className={`text-xs text-[var(--color-comment)] ${
-                      move.isMe ? "text-right" : "text-left"
-                    }`}
-                  >
-                    {move.playerName}
-                  </span>
-                  <div
-                    className={`px-5 py-3 rounded-2xl text-lg font-medium shadow-sm ${
-                      move.isValid === false
-                        ? "bg-[var(--color-red)]/20 border border-[var(--color-red)]/50 text-[var(--color-red)] line-through"
-                        : move.isMe
-                          ? "bg-[var(--color-purple)] text-white rounded-br-none"
-                          : "bg-[var(--color-line)] text-[var(--color-fg)] rounded-bl-none"
-                    }`}
-                  >
-                    {move.word}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-
-            {/* AI Thinking / Validating indicator */}
-            <AnimatePresence>
-              {isBusy && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex justify-start"
-                >
-                  <div className="px-5 py-3 rounded-2xl bg-[var(--color-line)] rounded-bl-none flex items-center gap-2">
-                    <Sparkles
-                      size={14}
-                      className="text-[var(--color-purple)] animate-pulse"
-                    />
-                    <span className="text-sm text-[var(--color-comment)]">
-                      {isValidating
-                        ? "Checking dictionary..."
-                        : "AI judging..."}
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Error / Ruling Toast */}
-          <AnimatePresence>
-            {(localError || (lastRuling && !lastRuling.isValid)) && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="mb-3 px-4 py-2 rounded-lg bg-[var(--color-red)]/10 border border-[var(--color-red)]/30 text-[var(--color-red)] text-sm flex items-center gap-2"
-              >
-                <AlertCircle size={14} />
-                {localError ?? lastRuling?.reason}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Input Area */}
-          <div className="pb-4 shrink-0">
-            <form onSubmit={handleSubmit} className="relative">
-              <input
-                autoFocus
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  if (localError) setLocalError(null);
-                }}
-                disabled={!isMyTurn || isBusy || gameState?.status !== "INGAME"}
-                placeholder={
-                  !isMyTurn
-                    ? "Waiting for your turn..."
-                    : isValidating
-                      ? "Checking dictionary..."
-                      : isAiThinking
-                        ? "AI is judging..."
-                        : "Type a single word..."
-                }
-                className="w-full bg-[var(--color-line)]/20 border border-[var(--color-line)] rounded-xl py-4 pl-6 pr-14 text-lg outline-none focus:border-[var(--color-purple)] focus:bg-[var(--color-bg)] transition-all placeholder-[var(--color-comment)] disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || !isMyTurn || isBusy}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-[var(--color-purple)] text-white hover:bg-[var(--color-pink)] disabled:opacity-50 disabled:bg-[var(--color-line)] transition-colors"
-              >
-                {isValidating ? (
-                  <Loader2 size={20} className="animate-spin" />
-                ) : (
-                  <Send size={20} />
-                )}
-              </button>
-            </form>
-
-            <div className="flex justify-between items-center mt-3 px-2">
-              <div className="flex items-center gap-2 text-xs text-[var(--color-comment)]">
-                <AlertCircle size={12} />
-                {lastWord ? (
-                  <span>
-                    Must relate to:{" "}
-                    <span className="text-[var(--color-fg)] font-bold">
-                      {lastWord}
-                    </span>
-                  </span>
-                ) : (
-                  <span>Type any word to start the chain</span>
-                )}
-              </div>
-              <span
-                className={`text-xs font-mono ${
-                  isMyTurn
-                    ? "text-[var(--color-purple)]"
-                    : "text-[var(--color-comment)]"
-                }`}
-              >
-                {isMyTurn ? "YOUR TURN" : "WAITING..."}
-              </span>
-            </div>
-          </div>
         </main>
 
         {/* Game Over Modal */}
@@ -476,17 +304,17 @@ export default function GameArena({ params }: GameArenaProps) {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50"
+                className="km-modal-overlay"
               />
               <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-[var(--color-bg)] border border-[var(--color-line)] rounded-2xl p-8 text-center"
+                className="km-modal text-center"
               >
                 <div className="w-16 h-16 rounded-full bg-[var(--color-purple)]/20 flex items-center justify-center mx-auto mb-4">
                   <Trophy size={32} className="text-[var(--color-purple)]" />
                 </div>
-                <h2 className="text-2xl font-bold mb-1">Game Over</h2>
+                <h2 className="text-4xl mb-1">Game over</h2>
                 <p className="text-[var(--color-comment)] mb-4">
                   Winner:{" "}
                   <span className="text-[var(--color-fg)] font-bold">
@@ -500,7 +328,7 @@ export default function GameArena({ params }: GameArenaProps) {
                 )}
                 <button
                   onClick={() => router.push("/dashboard")}
-                  className="w-full py-3 rounded-xl bg-[var(--color-purple)] hover:bg-[var(--color-pink)] text-white font-bold transition-all"
+                  className="km-button-gold w-full"
                 >
                   Back to Dashboard
                 </button>

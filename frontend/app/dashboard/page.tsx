@@ -1,20 +1,14 @@
 "use client";
+
 import Navbar from "../components/Navbar";
 import GameModeModal from "../components/GameModeModal";
 import { authClient } from "../auth/authClient";
-const { useSession } = authClient;
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Share2, Play, Activity } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Share2, Play } from "lucide-react";
 import ProtectedRoute from "../auth/ProtectedRoute";
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-} from "recharts";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 
+const { useSession } = authClient;
 const MOCK_RADAR = [
   { subject: "Space", score: 0, fullMark: 10 },
   { subject: "Logic", score: 0, fullMark: 10 },
@@ -23,19 +17,16 @@ const MOCK_RADAR = [
   { subject: "Time", score: 0, fullMark: 10 },
 ];
 
-interface RecentGame {
-  roomId: string;
-  won: boolean;
-  wordsContributed: number;
-  wordCount: number;
-  playedAt: string;
-}
-
-interface Stats {
-  totalGames: number;
-  wins: number;
-  winRate: number;
-  recentGames: RecentGame[];
+interface RecentGame { roomId: string; won: boolean; wordsContributed: number; wordCount: number; playedAt: string; }
+interface Stats { totalGames: number; wins: number; winRate: number; recentGames: RecentGame[]; }
+interface MindInsights {
+  analyzedGames: number;
+  totalWords: number;
+  interests: { subject: string; score: number }[];
+  nextToExplore: string | null;
+  recentWords: string[];
+  headline: string;
+  detail: string;
 }
 
 function timeAgo(dateStr: string): string {
@@ -54,222 +45,125 @@ export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [radarData, setRadarData] = useState(MOCK_RADAR);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [insights, setInsights] = useState<MindInsights | null>(null);
 
   useEffect(() => {
     if (!session?.user?.id) return;
-
-    // Fetch radar
-    fetch(`/api/profile/radar`, {
-      credentials: "include",
-    })
+    fetch("/api/profile/radar", { credentials: "include" })
       .then((res) => res.json())
-      .then((data) => {
-        if (data.radarData?.length > 0) setRadarData(data.radarData);
-      });
-
-    // Fetch stats + recent games
-    fetch(`/api/profile/stats`, {
-      credentials: "include",
-    })
+      .then((data) => { if (data.radarData?.length > 0) setRadarData(data.radarData); })
+      .catch(() => {});
+    fetch("/api/profile/stats", { credentials: "include" })
       .then((res) => res.json())
-      .then((data) => setStats(data));
+      .then((data) => setStats(data))
+      .catch(() => {});
+    fetch("/api/profile/insights", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setInsights(data))
+      .catch(() => {});
   }, [session]);
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-fg)]">
+      <div className="km-page">
         <Navbar />
-
-        <main className="pt-24 px-6 max-w-7xl mx-auto pb-12">
-          <div className="grid lg:grid-cols-12 gap-8">
-            {/* Left Column */}
-            <div className="lg:col-span-4 space-y-6">
-              {/* User Card */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="p-6 rounded-2xl bg-[var(--color-line)]/10 border border-[var(--color-line)] backdrop-blur-md"
-              >
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-[var(--color-purple)] to-[var(--color-pink)] p-[2px]">
-                    <div className="w-full h-full rounded-full bg-[var(--color-bg)] flex items-center justify-center text-2xl font-bold">
-                      {session?.user?.name?.[0]?.toUpperCase() ?? "U"}
-                    </div>
-                  </div>
+        <main className="km-content" style={{ paddingTop: 18 }}>
+          <p className="km-kicker mb-4">Your semantic fingerprint</p>
+          <div className="km-dashboard">
+            <aside className="km-dashboard-stack">
+              <section className="km-card">
+                <div className="flex items-center gap-4">
+                  <div className="km-avatar">{session?.user?.name?.[0]?.toUpperCase() ?? "P"}</div>
                   <div>
-                    <h2 className="text-xl font-bold">
-                      {session?.user?.name ?? "Anonymous"}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-purple)]/20 text-[var(--color-purple)] border border-[var(--color-purple)]/30">
-                        The Architect
-                      </span>
-                    </div>
+                    <strong className="block text-xl">{session?.user?.name ?? "Player"}</strong>
+                    <p className="km-muted m-0">The Architect</p>
                   </div>
                 </div>
-
-                {/* Real stats */}
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-line)]">
-                    <div className="text-[var(--color-comment)] text-xs mb-1">
-                      Matches
-                    </div>
-                    <div className="text-xl font-bold">
-                      {stats?.totalGames ?? "—"}
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-line)]">
-                    <div className="text-[var(--color-comment)] text-xs mb-1">
-                      Win Rate
-                    </div>
-                    <div className="text-xl font-bold text-[var(--color-green)]">
-                      {stats ? `${stats.winRate}%` : "—"}
-                    </div>
-                  </div>
+                <div className="km-stats">
+                  <div className="km-stat"><small>Matches</small><strong>{stats?.totalGames ?? "—"}</strong></div>
+                  <div className="km-stat"><small>Win rate</small><strong>{stats ? `${stats.winRate}%` : "—"}</strong></div>
                 </div>
+                <button className="km-button-secondary w-full" type="button"><Share2 size={15} /> Share identity</button>
+              </section>
 
-                <button className="w-full py-2 rounded-lg border border-[var(--color-line)] text-[var(--color-comment)] hover:bg-[var(--color-line)] hover:text-[var(--color-fg)] flex items-center justify-center gap-2 transition-all text-sm">
-                  <Share2 size={16} /> Share Identity
-                </button>
-              </motion.div>
+              <section className="km-card">
+                <h2 className="text-2xl m-0 mb-2">Recent games</h2>
+                {!stats || !stats.recentGames?.length ? (
+                  <p className="km-muted">No games played yet. Enter the arena to start a trail.</p>
+                ) : stats.recentGames.map((game, index) => (
+                  <div className="km-recent-row" key={`${game.roomId}-${index}`}>
+                    <div><b>Room {game.roomId}</b><small className="km-muted block">{game.wordsContributed} words · {timeAgo(game.playedAt)}</small></div>
+                    <b style={{ color: game.won ? "var(--color-green)" : "var(--color-red)" }}>{game.won ? "Won" : "Lost"}</b>
+                  </div>
+                ))}
+              </section>
+            </aside>
 
-              {/* Recent Games — real data */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className="p-6 rounded-2xl bg-[var(--color-line)]/10 border border-[var(--color-line)] backdrop-blur-md"
-              >
-                <h3 className="text-sm font-bold text-[var(--color-comment)] uppercase tracking-wider mb-4">
-                  Recent Games
-                </h3>
+            <div className="km-dashboard-stack">
+              <button className="km-arena-card" onClick={() => setIsModalOpen(true)}>
+                <span><b>Enter the arena</b><span>Challenge the bot or a friend. Evolve your profile.</span></span>
+                <Play size={38} fill="currentColor" />
+              </button>
 
-                {!stats ||
-                !stats.recentGames ||
-                stats.recentGames.length === 0 ? (
-                  <p className="text-sm text-[var(--color-comment)]">
-                    No games played yet. Enter the arena!
-                  </p>
+              <section className="km-radar">
+                <h2 className="m-0 text-3xl">Your anchor map</h2>
+                <p className="km-muted mt-1">How your own accepted words connect with your map topics.</p>
+                <div className="w-full min-h-[330px] flex justify-center items-center">
+                  <RadarChart width={500} height={360} data={radarData} outerRadius="72%" margin={{ top: 20, left: 32, right: 32, bottom: 20 }}>
+                    <PolarGrid stroke="var(--color-line)" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: "var(--color-fg)", fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 16 }} />
+                    <PolarRadiusAxis tick={false} axisLine={false} />
+                    <Radar name={session?.user?.name} dataKey="score" stroke="var(--color-purple)" fill="var(--color-purple)" fillOpacity={0.28} />
+                  </RadarChart>
+                </div>
+              </section>
+
+              <section className="km-interest-map">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="km-kicker m-0">Built from your games</p>
+                    <h2 className="m-0 mt-1 text-3xl">Where your mind goes</h2>
+                  </div>
+                  <span className="km-interest-count">{insights?.analyzedGames ?? 0} analyzed</span>
+                </div>
+                <p className="km-muted mt-2 mb-5">
+                  {insights?.detail ?? "Your own accepted words reveal which topics keep drawing you in."}
+                </p>
+                {insights?.interests?.length ? (
+                  <div className="km-interest-layout">
+                    <div className="km-interest-bars">
+                      {insights.interests.slice(0, 5).map((interest) => (
+                        <div className="km-interest-row" key={interest.subject}>
+                          <div className="flex justify-between gap-3 text-sm"><b>{interest.subject}</b><span className="km-muted">{interest.score}%</span></div>
+                          <div className="km-interest-track"><span style={{ width: `${interest.score}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="km-interest-next">
+                      <small className="km-muted">A new direction to explore</small>
+                      <strong>{insights.nextToExplore ?? "Play to discover"}</strong>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
-                    {(stats?.recentGames ?? []).map((game, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          {/* Result dot */}
-                          <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                              game.won
-                                ? "bg-[var(--color-green)]/20 text-[var(--color-green)]"
-                                : "bg-[var(--color-red)]/20 text-[var(--color-red)]"
-                            }`}
-                          >
-                            {game.won ? "W" : "L"}
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium font-mono">
-                              ROOM {game.roomId}
-                            </div>
-                            <div className="text-xs text-[var(--color-comment)]">
-                              {game.wordsContributed} words ·{" "}
-                              {timeAgo(game.playedAt)}
-                            </div>
-                          </div>
-                        </div>
-                        <div
-                          className={`text-xs font-bold ${
-                            game.won
-                              ? "text-[var(--color-green)]"
-                              : "text-[var(--color-red)]"
-                          }`}
-                        >
-                          {game.won ? "WON" : "LOST"}
-                        </div>
-                      </div>
-                    ))}
+                  <div className="km-interest-empty">
+                    <span className="km-interest-orbit" aria-hidden="true">✳</span>
+                    <b>{insights?.headline ?? "Your interest map is taking shape"}</b>
+                    <span className="km-muted">Play matches to build a picture from your own word choices.</span>
                   </div>
                 )}
-              </motion.div>
-            </div>
-
-            <div className="lg:col-span-8 space-y-6">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="relative p-8 rounded-2xl overflow-hidden bg-gradient-to-r from-[var(--color-purple)] to-[var(--color-pink)] text-white shadow-lg group cursor-pointer"
-                onClick={() => setIsModalOpen(true)}
-              >
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-white/20 transition-all duration-500" />
-                <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div>
-                    <h2 className="text-3xl font-bold mb-2">Enter the Arena</h2>
-                    <p className="text-white/80">
-                      Challenge an AI or a Human. Evolve your profile.
-                    </p>
+                {!!insights?.recentWords?.length && (
+                  <div className="km-word-evidence">
+                    <small className="km-muted">Recent words from your trails</small>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {insights.recentWords.slice(0, 8).map((word, index) => <span className="km-evidence-word" key={`${word}-${index}`}>{word}</span>)}
+                    </div>
                   </div>
-                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Play size={32} fill="currentColor" className="ml-1" />
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Radar Chart */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="p-6 rounded-2xl bg-[var(--color-line)]/10 border border-[var(--color-line)] backdrop-blur-md min-h-[400px] flex flex-col"
-              >
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h3 className="text-lg font-bold">Cognitive Radar</h3>
-                    <p className="text-sm text-[var(--color-comment)]">
-                      Your semantic gravity across your 5 anchors.
-                    </p>
-                  </div>
-                  <button className="p-2 hover:bg-[var(--color-line)] rounded-lg text-[var(--color-comment)]">
-                    <Activity size={20} />
-                  </button>
-                </div>
-
-                <div className="flex flex-auto justify-center items-center w-full h-[300px]">
-                  <div className="h-[400px] w-[500px]">
-                    <RadarChart
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        maxWidth: "500px",
-                        maxHeight: "80vh",
-                        aspectRatio: 1,
-                      }}
-                      outerRadius="80%"
-                      data={radarData}
-                      margin={{ top: 20, left: 20, right: 20, bottom: 20 }}
-                    >
-                      <PolarGrid />
-                      <PolarAngleAxis dataKey="subject" />
-                      <PolarRadiusAxis />
-                      <Radar
-                        name={session?.user?.name}
-                        dataKey="score"
-                        stroke="#8884d8"
-                        fill="#8884d8"
-                        fillOpacity={0.6}
-                      />
-                    </RadarChart>
-                  </div>
-                </div>
-              </motion.div>
+                )}
+              </section>
             </div>
           </div>
         </main>
-
-        <GameModeModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-        />
+        <GameModeModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       </div>
     </ProtectedRoute>
   );
