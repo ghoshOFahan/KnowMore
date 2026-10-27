@@ -98,6 +98,7 @@ h3 { font-weight: 600; }
 .km-nav-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .km-nav-link { border: 1px solid var(--color-line); border-radius: 4px; padding: 8px 13px; background: transparent; font-size: 13px; }
 .km-nav-link:hover, .km-nav-link[aria-current="page"] { background: var(--color-panel); }
+.km-menu-toggle { display: none; align-items: center; justify-content: center; width: 42px; height: 42px; border: 1px solid var(--color-line); border-radius: 5px; background: var(--color-panel); }
 
 .km-home-hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(32px, 6vw, 80px); align-items: center; min-height: min(650px, calc(100vh - 90px)); }
 .km-home-hero h1 { max-width: 760px; margin: 0 0 16px; }
@@ -197,24 +198,56 @@ h3 { font-weight: 600; }
 .km-mode-option small { margin-top: 5px; color: var(--color-comment); }
 .km-room { width: min(640px, calc(100% - 48px)); margin: 0 auto; padding: 26px 0 64px; }
 .km-room-code { margin: 12px 0; font: 500 clamp(54px, 11vw, 96px)/1 var(--font-display); letter-spacing: .05em; }
-.km-game-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr); gap: 22px; align-items: start; }
-.km-game-board { background: var(--color-panel); border: 1px solid var(--color-line); border-radius: 4px; aspect-ratio: 1; padding: 10px; }
-.km-word-tile { max-width: 72%; padding: 10px 18px 12px; background: var(--color-purple); color: #26254a; font: 600 22px/1.1 var(--font-display); border: 1px solid var(--color-fg); border-radius: 4px; }
+.km-game-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr); gap: 20px; align-items: start; }
+.km-game-board { min-width: 0; background: var(--color-panel); border: 1px solid var(--color-line); border-radius: 8px; padding: clamp(18px, 3vw, 30px); }
+.km-trail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--color-line); }
+.km-trail-heading h1 { margin: 5px 0 0; font: 500 clamp(24px, 3vw, 36px)/1.1 var(--font-display); }
+.km-trail-count { flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--color-line); border-radius: 99px; color: var(--color-comment); font-size: 13px; }
+.km-word-tile { display: inline-flex; max-width: 100%; padding: 9px 15px 11px; background: var(--color-purple); color: #26254a; font: 600 clamp(19px, 2vw, 25px)/1.1 var(--font-display); border: 1px solid var(--color-fg); border-radius: 5px; overflow-wrap: anywhere; }
 .km-word-tile.opponent { background: var(--color-pink); }
-.km-game-status { padding: 11px 12px; border: 2px solid transparent; border-radius: 4px; margin-bottom: 8px; }
-.km-game-status.active { border-color: var(--color-fg); }
-.km-game-status.eliminated { opacity: .5; text-decoration: line-through; }
-.km-game-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 14px; }
-.km-game-progress { height: 6px; margin-bottom: 18px; overflow: hidden; border-radius: 4px; background: var(--color-line); }
+.km-game-status { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--color-line); border-radius: 6px; margin-bottom: 8px; }
+.km-game-status.active { border-color: var(--color-purple); background: color-mix(in srgb, var(--color-purple) 9%, transparent); }
+.km-game-status.eliminated { opacity: .48; }
+.km-player-mark { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%; background: var(--color-line); color: var(--color-fg); font-weight: 700; }
+.km-player-copy { display: grid; gap: 3px; min-width: 0; }
+.km-player-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.km-player-copy small { color: var(--color-comment); }
+.km-player-state { width: 9px; height: 9px; flex: 0 0 9px; margin-left: auto; border-radius: 50%; background: var(--color-line); }
+.km-player-state.playing { background: var(--color-green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-green) 18%, transparent); }
+.km-life-pips { display: flex; gap: 4px; margin-left: auto; }
+.km-life-pips i { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--color-pink); border: 1px solid var(--color-pink); }
+.km-life-pips i.lost { background: transparent; border-color: var(--color-line); }
+.km-game-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0 14px; }
+.km-turn-pill { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 99px; background: var(--color-panel); color: var(--color-comment); font-size: 14px; }
+.km-turn-pill.your-turn { color: var(--color-fg); }
+.km-turn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-line); }
+.km-turn-pill.your-turn .km-turn-dot { background: var(--color-green); }
+.km-turn-clock { min-width: 34px; padding: 2px 7px; text-align: center; color: var(--color-bg); background: var(--color-pink); border-radius: 99px; font-size: 12px; }
+.km-game-progress { height: 5px; margin-bottom: 18px; overflow: hidden; border-radius: 4px; background: var(--color-line); }
 .km-game-progress > * { display: block; height: 100%; background: var(--color-purple); transition: width .25s ease; }
-.km-word-list { min-height: 520px; max-height: calc(100vh - 190px); overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-.km-word-row { display: flex; justify-content: flex-start; }
+.km-word-list { min-height: 360px; max-height: calc(100vh - 320px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 18px 2px 4px; scroll-behavior: smooth; }
+.km-word-row { display: flex; align-items: flex-end; justify-content: flex-start; gap: 12px; }
 .km-word-row.mine { justify-content: flex-end; text-align: right; }
-.km-word-tile.invalid { background: transparent; border: 2px dashed var(--color-red); color: var(--color-red); text-decoration: line-through; }
-.km-player-list { margin-bottom: 20px; }
-.km-game-prompt { margin: 20px 0 12px; font-size: clamp(26px, 3vw, 34px); }
-.km-game-prompt span { text-decoration: underline; text-decoration-color: var(--color-pink); text-decoration-thickness: 3px; text-underline-offset: 5px; }
-.km-word-form { display: flex; gap: 8px; align-items: stretch; }
+.km-word-index { color: var(--color-comment); font: 12px/1.5 ui-monospace, monospace; opacity: .75; }
+.km-word-entry { display: grid; justify-items: start; gap: 5px; max-width: 78%; }
+.km-word-row.mine .km-word-entry { justify-items: end; }
+.km-word-entry small { font-size: 12px; }
+.km-trail-empty { display: grid; place-items: center; gap: 8px; min-height: 260px; padding: 24px; text-align: center; color: var(--color-comment); }
+.km-trail-empty svg { color: var(--color-purple); }
+.km-trail-empty b { color: var(--color-fg); font: 500 22px/1.2 var(--font-display); }
+.km-thinking { display: flex; align-items: center; gap: 8px; color: var(--color-comment); font-size: 14px; padding: 8px 0; }
+.km-opponent-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; color: var(--color-comment); font-size: 13px; }
+.km-player-list { margin-bottom: 18px; }
+.km-prompt-card { padding: 18px; margin: 8px 0 20px; border-radius: 6px; background: color-mix(in srgb, var(--color-purple) 12%, var(--color-bg)); }
+.km-prompt-card small { color: var(--color-comment); }
+.km-game-prompt { margin: 7px 0; font: 500 clamp(26px, 3vw, 34px)/1.05 var(--font-display); overflow-wrap: anywhere; }
+.km-prompt-card p { margin: 0; color: var(--color-comment); font-size: 14px; }
+.km-word-form { display: grid; gap: 8px; }
+.km-word-form label { color: var(--color-comment); font-size: 13px; }
+.km-word-input-row { display: flex; gap: 9px; }
+.km-word-input-row .km-input { min-width: 0; flex: 1; }
+.km-game-hint { color: var(--color-comment); font-size: 12px; line-height: 1.5; }
+.km-share-status { min-height: 16px; margin: 6px 0 0; color: var(--color-comment); text-align: center; font-size: 12px; }
 .km-error { display: flex; align-items: center; gap: 8px; color: var(--color-red); font-size: 14px; }
 .km-pulse { display: inline-block; width: 11px; height: 11px; margin-right: 8px; border-radius: 50%; background: var(--color-pink); animation: km-pulse 1.3s infinite; }
 @keyframes km-pulse { 50% { opacity: .25; } }
@@ -227,10 +260,49 @@ h3 { font-weight: 600; }
   .km-feature-grid { grid-template-columns: 1fr; }
   .km-mode-grid { grid-template-columns: 1fr; }
   .km-interest-layout { grid-template-columns: 1fr; }
-  .km-word-list { min-height: 320px; max-height: none; }
-  .km-word-form { flex-direction: column; }
+  .km-word-list { min-height: 280px; max-height: 48vh; }
+  .km-word-input-row { flex-direction: column; }
   .km-navbar { width: calc(100% - 32px); align-items: flex-start; }
   .km-nav-actions { justify-content: flex-end; }
+}
+@media (max-width: 640px) {
+  .km-content, .km-narrow { width: calc(100% - 28px); padding-top: 16px; }
+  .km-navbar { width: calc(100% - 28px); min-height: 62px; align-items: center; padding: 9px 0; }
+  .km-logo { font-size: 21px; }
+  .km-menu-toggle { display: inline-flex; }
+  .km-nav-actions { display: none; position: absolute; top: calc(100% - 2px); right: 0; width: min(280px, calc(100vw - 28px)); padding: 12px; flex-direction: column; align-items: stretch; gap: 7px; border: 1px solid var(--color-line); border-radius: 7px; background: var(--color-bg); box-shadow: 0 16px 40px rgb(0 0 0 / 30%); }
+  .km-navbar.menu-open .km-nav-actions { display: flex; }
+  .km-nav-link { width: 100%; min-height: 42px; text-align: left; }
+  .km-nav-actions > :last-child { align-self: flex-start; }
+  .km-game-sidebar { order: -1; padding: 16px; }
+  .km-player-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-bottom: 13px; }
+  .km-game-status { min-width: 0; gap: 7px; padding: 8px; margin: 0; }
+  .km-player-mark { flex-basis: 30px; width: 30px; height: 30px; }
+  .km-player-copy b { font-size: 12px; }
+  .km-player-copy small { font-size: 10px; }
+  .km-life-pips { gap: 3px; }
+  .km-life-pips i { width: 7px; height: 7px; }
+  .km-game-board { padding: 15px; }
+  .km-word-list { min-height: 220px; max-height: 42vh; }
+  .km-game-top { align-items: flex-start; }
+  .km-turn-pill { max-width: 68%; padding: 7px 9px; font-size: 12px; }
+  .km-turn-clock { min-width: 30px; }
+  .km-trail-heading { gap: 8px; }
+  .km-trail-heading h1 { font-size: 24px; }
+  .km-trail-count { padding: 4px 7px; font-size: 11px; }
+  .km-card, .km-radar, .km-interest-map { padding: 16px; }
+  .km-arena-card { min-height: 112px; padding: 18px; }
+  .km-modal { inset: 12px; width: calc(100% - 24px); max-height: calc(100dvh - 24px); padding: 19px; }
+  .km-modal h2 { font-size: 29px; }
+  .km-room { width: 100%; }
+}
+@media (max-width: 380px) {
+  .km-player-list { grid-template-columns: 1fr; }
+  .km-game-top { flex-wrap: wrap; }
+  .km-turn-pill { max-width: 100%; }
+  .km-trail-heading h1 { font-size: 21px; }
+  .km-word-tile { padding: 8px 11px; }
+  .km-mode-option { min-height: 108px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }

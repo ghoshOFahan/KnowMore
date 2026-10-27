@@ -102,6 +102,7 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
         username,
         maxPlayers: 2,
         clientId,
+        mode: "ai",
       });
     }
   };
@@ -119,7 +120,7 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
     {
       id: "ai",
       title: "Train with AI",
-      desc: "Sharpen your semantic profile against the engine.",
+      desc: "Play a live match against The Thinker. Every turn is judged by the same semantic engine.",
       icon: <Bot size={24} />,
       color: "from-[var(--color-purple)] to-[var(--color-pink)]",
     },

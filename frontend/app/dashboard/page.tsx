@@ -6,7 +6,7 @@ import { authClient } from "../auth/authClient";
 import { useEffect, useState } from "react";
 import { Share2, Play } from "lucide-react";
 import ProtectedRoute from "../auth/ProtectedRoute";
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 
 const { useSession } = authClient;
 const MOCK_RADAR = [
@@ -46,6 +46,37 @@ export default function Dashboard() {
   const [radarData, setRadarData] = useState(MOCK_RADAR);
   const [stats, setStats] = useState<Stats | null>(null);
   const [insights, setInsights] = useState<MindInsights | null>(null);
+  const [shareStatus, setShareStatus] = useState("");
+
+  const shareIdentity = async () => {
+    const name = session?.user?.name ?? "A KnowMore player";
+    const interests = insights?.interests?.slice(0, 3).map((item) => item.subject);
+    const profile = [
+      `${name}'s KnowMore identity`,
+      interests?.length ? `Mind drawn to: ${interests.join(", ")}.` : "Building a semantic fingerprint through word-chain games.",
+      `${stats?.totalGames ?? 0} matches played${stats ? `, ${stats.winRate}% win rate` : ""}.`,
+      `${window.location.origin}/`,
+    ].join("\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${name}'s KnowMore identity`, text: profile });
+        setShareStatus("Identity shared");
+      } else {
+        await navigator.clipboard.writeText(profile);
+        setShareStatus("Identity copied");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(profile);
+        setShareStatus("Identity copied");
+      } catch {
+        setShareStatus("Could not share right now");
+      }
+    }
+    window.setTimeout(() => setShareStatus(""), 3000);
+  };
 
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -83,7 +114,8 @@ export default function Dashboard() {
                   <div className="km-stat"><small>Matches</small><strong>{stats?.totalGames ?? "—"}</strong></div>
                   <div className="km-stat"><small>Win rate</small><strong>{stats ? `${stats.winRate}%` : "—"}</strong></div>
                 </div>
-                <button className="km-button-secondary w-full" type="button"><Share2 size={15} /> Share identity</button>
+                <button className="km-button-secondary w-full" type="button" onClick={shareIdentity} aria-label="Share your KnowMore identity"><Share2 size={15} /> Share identity</button>
+                <p className="km-share-status" aria-live="polite">{shareStatus}</p>
               </section>
 
               <section className="km-card">
@@ -109,12 +141,12 @@ export default function Dashboard() {
                 <h2 className="m-0 text-3xl">Your anchor map</h2>
                 <p className="km-muted mt-1">How your own accepted words connect with your map topics.</p>
                 <div className="w-full min-h-[330px] flex justify-center items-center">
-                  <RadarChart width={500} height={360} data={radarData} outerRadius="72%" margin={{ top: 20, left: 32, right: 32, bottom: 20 }}>
+                  <ResponsiveContainer width="100%" height={360}><RadarChart data={radarData} outerRadius="72%" margin={{ top: 20, left: 32, right: 32, bottom: 20 }}>
                     <PolarGrid stroke="var(--color-line)" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: "var(--color-fg)", fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 16 }} />
                     <PolarRadiusAxis tick={false} axisLine={false} />
                     <Radar name={session?.user?.name} dataKey="score" stroke="var(--color-purple)" fill="var(--color-purple)" fillOpacity={0.28} />
-                  </RadarChart>
+                  </RadarChart></ResponsiveContainer>
                 </div>
               </section>
 
