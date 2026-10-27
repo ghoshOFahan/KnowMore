@@ -38,10 +38,16 @@ export async function getGame(
       0,
       -1,
     );
+    const wordAuthors = await redisClient.lrange(
+      WORD_AUTHORS_KEY(roomId),
+      0,
+      -1,
+    );
     //Parse and Merge
     const gameState = JSON.parse(gameStateJson);
     // overwrite or add the wordHistory property with the fresh list from Redis
     gameState.wordHistory = wordHistory;
+    gameState.wordAuthors = wordAuthors;
 
     return gameState;
   } catch (error) {

@@ -46,6 +46,37 @@ export default function Dashboard() {
   const [radarData, setRadarData] = useState(MOCK_RADAR);
   const [stats, setStats] = useState<Stats | null>(null);
   const [insights, setInsights] = useState<MindInsights | null>(null);
+  const [shareStatus, setShareStatus] = useState("");
+
+  const shareIdentity = async () => {
+    const name = session?.user?.name ?? "A KnowMore player";
+    const interests = insights?.interests?.slice(0, 3).map((item) => item.subject);
+    const profile = [
+      `${name}'s KnowMore identity`,
+      interests?.length ? `Mind drawn to: ${interests.join(", ")}.` : "Building a semantic fingerprint through word-chain games.",
+      `${stats?.totalGames ?? 0} matches played${stats ? `, ${stats.winRate}% win rate` : ""}.`,
+      `${window.location.origin}/`,
+    ].join("\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${name}'s KnowMore identity`, text: profile });
+        setShareStatus("Identity shared");
+      } else {
+        await navigator.clipboard.writeText(profile);
+        setShareStatus("Identity copied");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(profile);
+        setShareStatus("Identity copied");
+      } catch {
+        setShareStatus("Could not share right now");
+      }
+    }
+    window.setTimeout(() => setShareStatus(""), 3000);
+  };
 
   useEffect(() => {
     if (!session?.user?.id) return;
@@ -83,7 +114,8 @@ export default function Dashboard() {
                   <div className="km-stat"><small>Matches</small><strong>{stats?.totalGames ?? "—"}</strong></div>
                   <div className="km-stat"><small>Win rate</small><strong>{stats ? `${stats.winRate}%` : "—"}</strong></div>
                 </div>
-                <button className="km-button-secondary w-full" type="button"><Share2 size={15} /> Share identity</button>
+                <button className="km-button-secondary w-full" type="button" onClick={shareIdentity} aria-label="Share your KnowMore identity"><Share2 size={15} /> Share identity</button>
+                <p className="km-share-status" aria-live="polite">{shareStatus}</p>
               </section>
 
               <section className="km-card">

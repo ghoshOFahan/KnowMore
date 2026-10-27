@@ -19,7 +19,12 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-  createRoom: ({ username, maxPlayers, clientId }) => void;
+  createRoom: (data: {
+    username: string;
+    maxPlayers?: number;
+    clientId: string;
+    mode?: "ai" | "multiplayer";
+  }) => void;
   joinRoom: ({ username, roomId, clientId }) => void;
   reconnectRoom: (oldsocketid) => void;
   submitWord: ({ roomId, word }) => void;

@@ -19,6 +19,8 @@ import {
   findWord,
 } from "./redis_helper.js";
 import { judgeWords } from "../ai/judge.js";
+import { chooseBotWord } from "../ai/wordBot.js";
+import { cosineSimilarity, embedWord } from "../ai/embeddingJudge.js";
 import { getFunnyComment } from "../ai/aiCommentator.js";
 import { auth } from "../auth.js";
 import { db } from "../db/db.js";
@@ -50,7 +52,7 @@ async function persistGame(gameState: GameState, wordHistory: string[], wordAuth
     const winnerPlayer = gameState.players.find(
       (p) => p.username === gameState.winner,
     );
-    const winnerId = winnerPlayer?.clientId ?? null;
+    const winnerId = winnerPlayer && !winnerPlayer.isBot ? winnerPlayer.clientId : null;
 
     // Attribute each accepted word to the player who submitted it.
     const wordCounts: Record<string, number> = {};
@@ -75,9 +77,10 @@ async function persistGame(gameState: GameState, wordHistory: string[], wordAuth
 
     if (!insertedGame) throw new Error("Game insert returned nothing");
 
-    // Insert one row per player
-    await db.insert(gamePlayers).values(
-      gameState.players.map((p, idx) => ({
+    // Bot opponents do not have a user row in the database.
+    const humanPlayers = gameState.players.filter((p) => !p.isBot);
+    if (humanPlayers.length) await db.insert(gamePlayers).values(
+      humanPlayers.map((p, idx) => ({
         gameId: insertedGame.id,
         userId: p.clientId,
         isEliminated: p.isEliminated ?? false,
@@ -122,14 +125,20 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
 
-    socket.on("createRoom", async ({ username, maxPlayers }) => {
+    socket.on("createRoom", async ({ username, maxPlayers, mode }) => {
       const dbUserId = socket.data.userId;
       const roomId = generateRoomId();
+      const botId = `bot:${roomId}`;
       const newGame: GameState = {
         roomId,
-        players: [{ id: socket.id, username, clientId: dbUserId }],
-        maxPlayers: maxPlayers || 4,
-        status: "LOBBY",
+        players: [
+          { id: socket.id, username, clientId: dbUserId },
+          ...(mode === "ai"
+            ? [{ id: botId, username: "The Thinker", clientId: botId, isBot: true }]
+            : []),
+        ],
+        maxPlayers: mode === "ai" ? 2 : maxPlayers || 4,
+        status: mode === "ai" ? "INGAME" : "LOBBY",
         currentPlayerId: socket.id,
         isAiThinking: false,
         wordHistory: [],
@@ -266,7 +275,12 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       }
 
       const fullHistory = await getWords(redis, roomId);
-      const mergedState = { ...gameState, wordHistory: fullHistory };
+      const fullAuthors = await getWordAuthors(redis, roomId);
+      const mergedState = { ...gameState, wordHistory: fullHistory, wordAuthors: fullAuthors };
+      const nextPlayer = gameState.players.find(
+        (player) => player.id === gameState.currentPlayerId,
+      );
+      const botWillRespond = ruling.isValid && !repeatedOccurred && gameState.status === "INGAME" && nextPlayer?.isBot;
 
       io.to(roomId).emit("aiRuled", {
         roomId,
@@ -281,7 +295,95 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       });
 
       io.to(roomId).emit("gameStateUpdate", mergedState);
-      io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
+      if (botWillRespond) {
+        io.to(roomId).emit("aiThinking", { roomId, isThinking: true });
+        await new Promise((resolve) => setTimeout(resolve, 650));
+
+        const botLastWord = await getLastWord(redis, roomId);
+        const usedWords = await getWords(redis, roomId);
+        let botWord: string | undefined;
+        let botScore = 0;
+        if (botLastWord) {
+          try {
+            const candidates = await chooseBotWord(botLastWord, usedWords);
+            const previousVector = await embedWord(botLastWord);
+            for (const candidate of candidates) {
+              const candidateVector = await embedWord(candidate);
+              const score = cosineSimilarity(previousVector, candidateVector);
+              if (score >= 0.75 && !(await findWord(redis, roomId, candidate))) {
+                botWord = candidate;
+                botScore = score;
+                break;
+              }
+            }
+          } catch (error) {
+            console.error("AI opponent could not generate a move:", error);
+          }
+        }
+
+        const botPlayer = gameState.players.find((player) => player.isBot);
+        if (botPlayer && botWord) {
+          await pushWord(redis, roomId, botWord, botPlayer.clientId);
+          gameState.currentPlayerId = getNextActivePlayerId(gameState.players, botPlayer.id);
+          await setGame(redis, roomId, gameState);
+          const botHistory = await getWords(redis, roomId);
+          const botAuthors = await getWordAuthors(redis, roomId);
+          io.to(roomId).emit("aiRuled", {
+            roomId,
+            playerId: botPlayer.id,
+            playerName: botPlayer.username,
+            lastWord: botLastWord,
+            newWord: botWord,
+            score: botScore,
+            isValid: true,
+            isEliminated: false,
+            reason: "",
+          });
+          io.to(roomId).emit("gameStateUpdate", {
+            ...gameState,
+            wordHistory: botHistory,
+            wordAuthors: botAuthors,
+          });
+        } else if (botPlayer) {
+          botPlayer.isEliminated = true;
+          gameState.status = "FINISHED";
+          gameState.winner = gameState.players.find((player) => !player.isBot && !player.isEliminated)?.username ?? "No One";
+          await setGame(redis, roomId, gameState);
+          const botHistory = await getWords(redis, roomId);
+          const botAuthors = await getWordAuthors(redis, roomId);
+          io.to(roomId).emit("aiRuled", {
+            roomId,
+            playerId: botPlayer.id,
+            playerName: botPlayer.username,
+            lastWord: botLastWord,
+            newWord: "no word",
+            score: 0,
+            isValid: false,
+            isEliminated: true,
+            reason: "The Thinker could not find a connected word.",
+          });
+          io.to(roomId).emit("gameStateUpdate", {
+            ...gameState,
+            wordHistory: botHistory,
+            wordAuthors: botAuthors,
+          });
+          io.to(roomId).emit("gameEnded", {
+            gameState,
+            commentary: "The Thinker ran out of connected words. Your trail wins this round.",
+          });
+          const gameId = await persistGame(gameState, botHistory, botAuthors);
+          if (gameId !== null) {
+            await analyticsQueue.add("analyze-game", {
+              gameId,
+              gameState: { ...gameState, wordHistory: botHistory },
+              wordAuthors: botAuthors,
+            });
+          }
+        }
+        io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
+      } else {
+        io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
+      }
     });
 
     socket.on("reconnectRoom", async ({ roomId }) => {
@@ -293,12 +395,16 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         const player = gameState.players.find((p) => p.clientId === dbUserId);
         if (!player) return socket.emit("gameError", "player not found");
 
+        const previousSocketId = player.id;
         if (pendingTimeouts.has(player.id)) {
           clearTimeout(pendingTimeouts.get(player.id)!);
           pendingTimeouts.delete(player.id);
         }
         await redis.del(SOCKET_ROOM_KEY(player.id));
         player.id = socket.id;
+        if (gameState.currentPlayerId === previousSocketId) {
+          gameState.currentPlayerId = socket.id;
+        }
 
         await setSocketRoom(redis, socket.id, roomId);
         await setGame(redis, roomId, gameState);

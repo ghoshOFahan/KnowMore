@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, AlertCircle, Sparkles, Loader2, Trophy, X } from "lucide-react";
+import { Send, AlertCircle, Sparkles, Trophy, X } from "lucide-react";
 import { authClient } from "../../auth/authClient";
 import { useSocket } from "../../hooks/useSocket";
 import { useRouter } from "next/navigation";
@@ -24,46 +24,6 @@ interface WordEntry {
   isValid?: boolean;
 }
 
-// Check word exists in dictionary, reject spaces/sentences
-async function validateWord(
-  word: string,
-): Promise<{ valid: boolean; reason?: string }> {
-  const trimmed = word.trim();
-
-  // No spaces or multiple words
-  if (/\s/.test(trimmed)) {
-    return {
-      valid: false,
-      reason: "Only single words are allowed — no spaces or sentences.",
-    };
-  }
-
-  // Only letters
-  if (!/^[a-zA-Z]+$/.test(trimmed)) {
-    return { valid: false, reason: "Words must contain only letters." };
-  }
-
-  try {
-    const res = await fetch(
-      `https://api.dictionaryapi.dev/api/v2/entries/en/${trimmed}`,
-    );
-    if (res.status === 404) {
-      return {
-        valid: false,
-        reason: `"${trimmed}" isn't a real word. Try again!`,
-      };
-    }
-    if (!res.ok) {
-      // If the API is down, allow it through to avoid blocking the game
-      return { valid: true };
-    }
-    return { valid: true };
-  } catch {
-    // Network error — allow through
-    return { valid: true };
-  }
-}
-
 export default function GameArena({ params }: GameArenaProps) {
   const { id: roomId } = React.use(params);
 
@@ -74,12 +34,11 @@ export default function GameArena({ params }: GameArenaProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [wordHistory, setWordHistory] = useState<WordEntry[]>([]);
   const [input, setInput] = useState("");
   const [isAiThinking, setIsAiThinking] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
   const [lastRuling, setLastRuling] = useState<{
     word: string;
     isValid: boolean;
@@ -95,7 +54,7 @@ export default function GameArena({ params }: GameArenaProps) {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [wordHistory]);
+  }, [gameState?.wordHistory?.length]);
 
   // Attempt reconnect on mount in case of page refresh
   useEffect(() => {
@@ -106,7 +65,7 @@ export default function GameArena({ params }: GameArenaProps) {
   // Socket event listeners
   useEffect(() => {
     const handleGameState = (state: GameState) => {
-      setGameState(state);
+      setGameState({ ...state, wordHistory: state.wordHistory ?? [], wordAuthors: state.wordAuthors ?? [] });
       setIsMyTurn(state.currentPlayerId === socket.id);
     };
 
@@ -127,18 +86,7 @@ export default function GameArena({ params }: GameArenaProps) {
       isEliminated: boolean;
       reason: string;
     }) => {
-      setWordHistory((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          word: data.newWord,
-          playerName: data.playerName,
-          isMe: data.playerId === socket.id,
-          isValid: data.isValid,
-        },
-      ]);
-
-      if (!data.isValid) {
+      if (!data.isValid && data.newWord !== "no word") {
         setLastRuling({
           word: data.newWord,
           isValid: false,
@@ -155,13 +103,17 @@ export default function GameArena({ params }: GameArenaProps) {
       gameState: GameState;
       commentary: string;
     }) => {
-      setGameState(finalState);
+      setGameState((current) => ({
+        ...finalState,
+        wordHistory: finalState.wordHistory ?? current?.wordHistory ?? [],
+        wordAuthors: finalState.wordAuthors ?? current?.wordAuthors ?? [],
+      }));
       setIsMyTurn(false);
       setGameOver({ winner: finalState.winner ?? "No One", commentary });
     };
 
     const handleGameError = (err: string) => {
-      console.error("Game error:", err);
+      setServerError(err);
     };
 
     socket.on("gameStateUpdate", handleGameState);
@@ -183,11 +135,11 @@ export default function GameArena({ params }: GameArenaProps) {
     async (e: React.FormEvent) => {
       e.preventDefault();
       const word = input.trim().toLowerCase();
-      if (!word || !isMyTurn || isAiThinking || isValidating) return;
+      if (!word || !isMyTurn || isAiThinking) return;
 
       // Local validation first — spaces, sentences, non-letters
       if (/\s/.test(word)) {
-        setLocalError("Only single words allowed — no spaces or sentences.");
+        setLocalError("Use one word at a time.");
         setTimeout(() => setLocalError(null), 3000);
         return;
       }
@@ -197,39 +149,26 @@ export default function GameArena({ params }: GameArenaProps) {
         return;
       }
 
-      // Dictionary API check
-      setIsValidating(true);
-      const { valid, reason } = await validateWord(word);
-      setIsValidating(false);
-
-      if (!valid) {
-        setLocalError(reason ?? "Invalid word.");
-        setTimeout(() => setLocalError(null), 3000);
-        return;
-      }
-
       socket.emit("submitWord", { roomId, word });
       setInput("");
     },
-    [input, isMyTurn, isAiThinking, isValidating, roomId, socket],
+    [input, isMyTurn, isAiThinking, roomId, socket],
   );
 
   const handleLeave = () => {
-    const handleLeave = () => {
-      if (!session?.user?.id) return;
-
-      // Pass the REAL database UUID when leaving
-      socket.emit("leaveRoom", {
-        roomId,
-        clientId: session.user.id,
-      });
-      router.push("/dashboard");
-    };
+    if (!session?.user?.id) return;
+    socket.emit("leaveRoom", { roomId, clientId: session.user.id });
+    router.push("/dashboard");
   };
 
+  const wordHistory: WordEntry[] = (gameState?.wordHistory ?? []).map((word, index) => {
+    const author = gameState?.wordAuthors?.[index];
+    const player = gameState?.players.find((item) => item.clientId === author);
+    return { id: index, word, playerName: player?.username ?? "Player", isMe: author === session?.user?.id };
+  });
   const lastWord = wordHistory[wordHistory.length - 1]?.word ?? null;
   const activePlayers = gameState?.players.filter((p) => !p.isEliminated) ?? [];
-  const isBusy = isAiThinking || isValidating;
+  const isBusy = isAiThinking;
 
   return (
     <ProtectedRoute>
@@ -237,10 +176,10 @@ export default function GameArena({ params }: GameArenaProps) {
         <Navbar />
         <main className="km-content" style={{ paddingTop: 4 }}>
           <div className="km-game-top">
-            <div><small className="km-muted block">Room</small><b>{roomId}</b></div>
-            <div className="text-right"><small className="km-muted block">{gameState ? `${activePlayers.length}/${gameState.maxPlayers} active` : "Connecting"}</small><b>{gameState?.players.find((player) => player.id !== gameState.currentPlayerId)?.username ?? "Opponent"}</b></div>
+            <div><small className="km-muted block">{gameState?.players.some((player) => player.isBot) ? "AI match" : "Room"}</small><b>{roomId}</b></div>
+            <div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isMyTurn ? "Your turn" : isAiThinking ? "The Thinker is choosing" : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting to match"}</div>
           </div>
-          <div className="km-game-progress"><motion.div key={lastWord} initial={{ width: "100%" }} animate={{ width: "0%" }} transition={{ duration: 15, ease: "linear" }} /></div>
+          {gameState?.status === "INGAME" && <div className="km-game-progress" aria-label={`${wordHistory.length} words played`}><motion.div initial={false} animate={{ width: `${Math.min(100, wordHistory.length * 8 + 8)}%` }} /></div>}
 
           {gameState?.status === "LOBBY" ? (
             <section className="km-room km-card text-center">
@@ -258,39 +197,41 @@ export default function GameArena({ params }: GameArenaProps) {
           ) : (
           <div className="km-game-layout">
             <section className="km-game-board" aria-label="Word trail">
+              <div className="km-trail-heading"><div><p className="km-kicker m-0">The word trail</p><h1>{lastWord ? "Keep the connection alive" : "Start with any word"}</h1></div><span className="km-trail-count">{wordHistory.length} {wordHistory.length === 1 ? "word" : "words"}</span></div>
               <div ref={scrollRef} className="km-word-list">
                 {wordHistory.length === 0 && (
-                  <p className="km-muted text-center mt-20">{gameState?.status === "INGAME" ? (isMyTurn ? "You go first — type any word to start." : "Waiting for the first word…") : "Connecting to the room…"}</p>
+                  <div className="km-trail-empty"><Sparkles size={22} /><b>{gameState?.status === "INGAME" ? (isMyTurn ? "Your first word sets the direction." : "The trail is ready.") : "Reconnecting to your match…"}</b><span>{isMyTurn ? "Choose a word that feels like a beginning." : "The opening word will appear here."}</span></div>
                 )}
                 {wordHistory.map((move) => (
-                  <motion.div key={move.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`km-word-row ${move.isMe ? "mine" : ""}`}>
-                    <div><small className="km-muted block">{move.playerName}</small><span className={`km-word-tile ${move.isMe ? "" : "opponent"} ${move.isValid === false ? "invalid" : ""}`}>{move.word}</span></div>
+                  <motion.div key={`${move.id}-${move.word}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`km-word-row ${move.isMe ? "mine" : ""}`}>
+                    <span className="km-word-index">{String(move.id + 1).padStart(2, "0")}</span><div className="km-word-entry"><small className="km-muted">{move.isMe ? "You" : move.playerName}</small><span className={`km-word-tile ${move.isMe ? "" : "opponent"}`}>{move.word}</span></div>
                   </motion.div>
                 ))}
                 <AnimatePresence>
-                  {isBusy && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="km-muted"><Sparkles size={15} className="inline mr-2" />{isValidating ? "Checking the word…" : "The judge is thinking…"}</motion.p>}
+                  {isBusy && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="km-thinking"><Sparkles size={15} />The Thinker is finding a connection</motion.div>}
                 </AnimatePresence>
               </div>
             </section>
 
             <aside className="km-card km-game-sidebar">
+              <div className="km-opponent-label"><span className="km-kicker m-0">Players</span><span>{activePlayers.length} active</span></div>
               <div className="km-player-list">
                 {gameState?.players.map((player) => (
                   <div key={player.clientId} className={`km-game-status ${player.id === gameState.currentPlayerId ? "active" : ""} ${player.isEliminated ? "eliminated" : ""}`}>
-                    <b>{player.username}</b><small className="km-muted block">{player.isEliminated ? "Out of the chain" : player.id === gameState.currentPlayerId ? "Their turn" : "In the match"}</small>
+                    <span className="km-player-mark">{player.isBot ? <Sparkles size={15} /> : player.username[0]?.toUpperCase()}</span><span className="km-player-copy"><b>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</b><small>{player.isEliminated ? "Trail ended" : player.id === gameState.currentPlayerId ? "Playing now" : "Following the trail"}</small></span><span className={`km-player-state ${player.id === gameState.currentPlayerId && !player.isEliminated ? "playing" : ""}`} />
                   </div>
                 ))}
                 {!gameState?.players.length && <p className="km-muted">Players will appear here when the room connects.</p>}
               </div>
 
-              <h2 className="km-game-prompt">{lastWord ? <>Connect to <span>{lastWord}</span></> : "Start the trail"}</h2>
+              <div className="km-prompt-card"><small>{lastWord ? "Find a word connected to" : "Your opening move"}</small><h2 className="km-game-prompt">{lastWord ?? "Begin anywhere"}</h2><p>{lastWord ? "Think wide. The connection can be surprising." : "Choose a word that opens a path."}</p></div>
               <form onSubmit={handleSubmit} className="km-word-form">
-                <input autoFocus value={input} onChange={(e) => { setInput(e.target.value); if (localError) setLocalError(null); }} disabled={!isMyTurn || isBusy || gameState?.status !== "INGAME"} placeholder={!isMyTurn ? "Waiting for your turn" : isValidating ? "Checking word…" : isAiThinking ? "The judge is thinking" : "Type a word"} className="km-input" />
-                <button type="submit" disabled={!input.trim() || !isMyTurn || isBusy} className="km-button">{isValidating ? <Loader2 size={18} className="animate-spin" /> : <Send size={17} />} Play</button>
+                <label htmlFor="next-word">Your next word</label><div className="km-word-input-row"><input id="next-word" autoFocus value={input} onChange={(e) => { setInput(e.target.value); if (localError) setLocalError(null); if (serverError) setServerError(null); }} disabled={!isMyTurn || isBusy || gameState?.status !== "INGAME"} placeholder={!isMyTurn ? "Wait for your turn" : "Enter one word"} className="km-input" /><button type="submit" disabled={!input.trim() || !isMyTurn || isBusy} className="km-button"><Send size={17} /> Play</button></div>
               </form>
               {localError && <p className="km-error"><AlertCircle size={15} />{localError}</p>}
               {lastRuling && !lastRuling.isValid && <p className="km-error"><AlertCircle size={15} />{lastRuling.reason}</p>}
-              <p className="km-muted text-sm mt-3">{isMyTurn ? "Your turn" : "Waiting for your turn"}</p>
+              {serverError && <p className="km-error" role="alert"><AlertCircle size={15} />{serverError}</p>}
+              <p className="km-game-hint">Words are checked for meaning and repetition. You are out if your link breaks.</p>
               <button onClick={handleLeave} className="km-button-secondary mt-5">Leave match <X size={15} /></button>
             </aside>
           </div>
