@@ -9,7 +9,7 @@ export function generateRoomId(): string {
 }
 export function getNextActivePlayerId(players: any[], currentId: string) {
   const currentIndex = players.findIndex((p) => p.id === currentId);
-  if (currentIndex === -1) return currentId;
+  if (currentIndex === -1) return players.find((player) => !player.isEliminated)?.id ?? currentId;
   let nextIndex = (currentIndex + 1) % players.length;
   while (players[nextIndex].isEliminated && nextIndex !== currentIndex) {
     nextIndex = (nextIndex + 1) % players.length;

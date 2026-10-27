@@ -11,6 +11,7 @@ import Navbar from "../../components/Navbar";
 import type { GameState } from "../../types/game";
 
 const { useSession } = authClient;
+const TURN_DURATION_SECONDS = 30;
 
 interface GameArenaProps {
   params: Promise<{ id: string }>;
@@ -66,7 +67,7 @@ export default function GameArena({ params }: GameArenaProps) {
   useEffect(() => {
     if (isPending || !session?.user?.id) return;
     socket.emit("reconnectRoom", { roomId, clientId: session?.user.id });
-  }, [roomId, socket, session, isPending]);
+  }, [roomId, socket, session?.user?.id, isPending]);
 
   // Socket event listeners
   useEffect(() => {
@@ -178,7 +179,7 @@ export default function GameArena({ params }: GameArenaProps) {
   const turnSecondsLeft = gameState?.turnExpiresAt
     ? Math.max(0, Math.ceil((gameState.turnExpiresAt - now) / 1000))
     : null;
-  const turnProgress = turnSecondsLeft === null ? 100 : (turnSecondsLeft / 15) * 100;
+  const turnProgress = turnSecondsLeft === null ? 100 : (turnSecondsLeft / TURN_DURATION_SECONDS) * 100;
 
   return (
     <ProtectedRoute>
@@ -187,9 +188,9 @@ export default function GameArena({ params }: GameArenaProps) {
         <main className="km-content" style={{ paddingTop: 4 }}>
           <div className="km-game-top">
             <div><small className="km-muted block">{gameState?.players.some((player) => player.isBot) ? "AI match" : "Room"}</small><b>{roomId}</b></div>
-            <div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isAiThinking ? "The Thinker is choosing" : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting"}{turnSecondsLeft !== null && <b className="km-turn-clock">{turnSecondsLeft}s</b>}</div>
+            <div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isAiThinking ? (gameState.players.find((player) => player.id === gameState.currentPlayerId)?.isBot ? "The Thinker is choosing" : "Checking your connection") : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting"}{turnSecondsLeft !== null && <b className="km-turn-clock">{turnSecondsLeft}s</b>}</div>
           </div>
-          {gameState?.status === "INGAME" && <div className="km-game-progress" role="progressbar" aria-label="Time left in this turn" aria-valuenow={turnSecondsLeft ?? 15} aria-valuemin={0} aria-valuemax={15}><motion.div initial={false} animate={{ width: `${turnProgress}%` }} /></div>}
+          {gameState?.status === "INGAME" && <div className="km-game-progress" role="progressbar" aria-label="Time left in this turn" aria-valuenow={turnSecondsLeft ?? TURN_DURATION_SECONDS} aria-valuemin={0} aria-valuemax={TURN_DURATION_SECONDS}><motion.div initial={false} animate={{ width: `${turnProgress}%` }} /></div>}
 
           {gameState?.status === "LOBBY" ? (
             <section className="km-room km-card text-center">
