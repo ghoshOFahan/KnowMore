@@ -4,6 +4,7 @@ export type Player = {
   clientId: string;
   isEliminated?: boolean;
   isBot?: boolean;
+  livesRemaining: number;
 };
 export interface GameState {
   roomId: string;
@@ -14,5 +15,6 @@ export interface GameState {
   isAiThinking: boolean;
   wordHistory: string[];
   wordAuthors?: string[];
+  turnExpiresAt?: number;
   winner?: string;
 }

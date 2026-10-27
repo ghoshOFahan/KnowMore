@@ -37,6 +37,7 @@ export default function GameArena({ params }: GameArenaProps) {
   const [input, setInput] = useState("");
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isMyTurn, setIsMyTurn] = useState(false);
+  const [now, setNow] = useState(Date.now());
   const [localError, setLocalError] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [lastRuling, setLastRuling] = useState<{
@@ -48,6 +49,11 @@ export default function GameArena({ params }: GameArenaProps) {
     winner: string;
     commentary: string;
   } | null>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, []);
 
   // Auto-scroll to bottom on new words
   useEffect(() => {
@@ -169,6 +175,10 @@ export default function GameArena({ params }: GameArenaProps) {
   const lastWord = wordHistory[wordHistory.length - 1]?.word ?? null;
   const activePlayers = gameState?.players.filter((p) => !p.isEliminated) ?? [];
   const isBusy = isAiThinking;
+  const turnSecondsLeft = gameState?.turnExpiresAt
+    ? Math.max(0, Math.ceil((gameState.turnExpiresAt - now) / 1000))
+    : null;
+  const turnProgress = turnSecondsLeft === null ? 100 : (turnSecondsLeft / 15) * 100;
 
   return (
     <ProtectedRoute>
@@ -177,9 +187,9 @@ export default function GameArena({ params }: GameArenaProps) {
         <main className="km-content" style={{ paddingTop: 4 }}>
           <div className="km-game-top">
             <div><small className="km-muted block">{gameState?.players.some((player) => player.isBot) ? "AI match" : "Room"}</small><b>{roomId}</b></div>
-            <div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isMyTurn ? "Your turn" : isAiThinking ? "The Thinker is choosing" : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting to match"}</div>
+            <div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isAiThinking ? "The Thinker is choosing" : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting"}{turnSecondsLeft !== null && <b className="km-turn-clock">{turnSecondsLeft}s</b>}</div>
           </div>
-          {gameState?.status === "INGAME" && <div className="km-game-progress" aria-label={`${wordHistory.length} words played`}><motion.div initial={false} animate={{ width: `${Math.min(100, wordHistory.length * 8 + 8)}%` }} /></div>}
+          {gameState?.status === "INGAME" && <div className="km-game-progress" role="progressbar" aria-label="Time left in this turn" aria-valuenow={turnSecondsLeft ?? 15} aria-valuemin={0} aria-valuemax={15}><motion.div initial={false} animate={{ width: `${turnProgress}%` }} /></div>}
 
           {gameState?.status === "LOBBY" ? (
             <section className="km-room km-card text-center">
@@ -218,7 +228,7 @@ export default function GameArena({ params }: GameArenaProps) {
               <div className="km-player-list">
                 {gameState?.players.map((player) => (
                   <div key={player.clientId} className={`km-game-status ${player.id === gameState.currentPlayerId ? "active" : ""} ${player.isEliminated ? "eliminated" : ""}`}>
-                    <span className="km-player-mark">{player.isBot ? <Sparkles size={15} /> : player.username[0]?.toUpperCase()}</span><span className="km-player-copy"><b>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</b><small>{player.isEliminated ? "Trail ended" : player.id === gameState.currentPlayerId ? "Playing now" : "Following the trail"}</small></span><span className={`km-player-state ${player.id === gameState.currentPlayerId && !player.isEliminated ? "playing" : ""}`} />
+                    <span className="km-player-mark">{player.isBot ? <Sparkles size={15} /> : player.username[0]?.toUpperCase()}</span><span className="km-player-copy"><b>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</b><small>{player.isEliminated ? "Out of lives" : player.id === gameState.currentPlayerId ? "Playing now" : "In the match"}</small></span><span className="km-life-pips" role="img" aria-label={`${player.livesRemaining ?? 3} of 3 lives remaining`}>{[0, 1, 2].map((life) => <i key={life} className={life >= (player.livesRemaining ?? 3) ? "lost" : ""} />)}</span>
                   </div>
                 ))}
                 {!gameState?.players.length && <p className="km-muted">Players will appear here when the room connects.</p>}

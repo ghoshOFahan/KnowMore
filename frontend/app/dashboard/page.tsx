@@ -6,7 +6,7 @@ import { authClient } from "../auth/authClient";
 import { useEffect, useState } from "react";
 import { Share2, Play } from "lucide-react";
 import ProtectedRoute from "../auth/ProtectedRoute";
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 
 const { useSession } = authClient;
 const MOCK_RADAR = [
@@ -141,12 +141,12 @@ export default function Dashboard() {
                 <h2 className="m-0 text-3xl">Your anchor map</h2>
                 <p className="km-muted mt-1">How your own accepted words connect with your map topics.</p>
                 <div className="w-full min-h-[330px] flex justify-center items-center">
-                  <RadarChart width={500} height={360} data={radarData} outerRadius="72%" margin={{ top: 20, left: 32, right: 32, bottom: 20 }}>
+                  <ResponsiveContainer width="100%" height={360}><RadarChart data={radarData} outerRadius="72%" margin={{ top: 20, left: 32, right: 32, bottom: 20 }}>
                     <PolarGrid stroke="var(--color-line)" />
                     <PolarAngleAxis dataKey="subject" tick={{ fill: "var(--color-fg)", fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 16 }} />
                     <PolarRadiusAxis tick={false} axisLine={false} />
                     <Radar name={session?.user?.name} dataKey="score" stroke="var(--color-purple)" fill="var(--color-purple)" fillOpacity={0.28} />
-                  </RadarChart>
+                  </RadarChart></ResponsiveContainer>
                 </div>
               </section>
 
