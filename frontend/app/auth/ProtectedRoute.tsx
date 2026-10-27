@@ -19,7 +19,12 @@ export default function ProtectedRoute({ children }: Props) {
   }, [session, isPending, router]);
 
   if (isPending) {
-    return <div className="p-10 text-white">Loading...</div>;
+    return (
+      <main className="km-loading">
+        <span className="km-chain-pin" aria-hidden="true" />
+        <p className="km-display">Following your trail…</p>
+      </main>
+    );
   }
 
   if (!session) {

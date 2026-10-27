@@ -139,6 +139,8 @@ export const gamePlayers = table(
       .notNull(),
     isEliminated: t.boolean("is_eliminated").default(false),
     wordsContributed: t.integer("words_contributed").default(0),
+    wordTrail: t.text("word_trail").array().notNull().default([]),
+    anchorScores: t.jsonb("anchor_scores").$type<Record<string, number>>(),
     rank: t.integer("rank"),
   },
   (table) => [primaryKey({ columns: [table.gameId, table.userId] })],

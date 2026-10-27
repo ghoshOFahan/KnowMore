@@ -3,6 +3,7 @@ import { insertData } from "../controllers/onboarding_controller.js";
 import {
   getProfileRadar,
   getProfileStats,
+  getProfileInsights,
 } from "../controllers/profile_controller.js";
 import { requireAuth } from "../middleware/authenticate.js";
 import { db } from "../db/db.js";
@@ -19,6 +20,7 @@ router.post("/onboarding", requireAuth, insertData);
 // Endpoint for the Dashboard to fetch the data formatted for Recharts
 router.get("/profile/radar", requireAuth, getProfileRadar);
 router.get("/profile/stats", requireAuth, getProfileStats);
+router.get("/profile/insights", requireAuth, getProfileInsights);
 router.get("/onboarding/status", requireAuth, async (req, res) => {
   const userId = req.user?.id;
   const existing = await db

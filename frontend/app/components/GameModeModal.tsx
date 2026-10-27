@@ -121,7 +121,7 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
       title: "Train with AI",
       desc: "Sharpen your semantic profile against the engine.",
       icon: <Bot size={24} />,
-      color: "from-[var(--color-blue)] to-[var(--color-purple)]",
+      color: "from-[var(--color-purple)] to-[var(--color-pink)]",
     },
     {
       id: "multiplayer",
@@ -148,31 +148,28 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
+            className="km-modal-overlay"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-[var(--color-bg)] border border-[var(--color-line)] rounded-2xl shadow-2xl z-[70] p-8 overflow-hidden"
+            className="km-modal"
           >
-            <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--color-purple)]/10 blur-[100px] pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-[var(--color-pink)]/10 blur-[100px] pointer-events-none" />
-
             <div className="relative z-10">
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-2xl font-bold text-[var(--color-fg)]">
-                  Select Protocol
+              <div className="flex justify-between items-center mb-5">
+                <h2 className="m-0 text-4xl text-[var(--color-fg)]">
+                  Choose how to play
                 </h2>
                 <button
                   onClick={handleClose}
-                  className="p-2 hover:bg-[var(--color-line)] rounded-full transition-colors"
+                  className="km-button-secondary p-2"
                 >
                   <X size={20} className="text-[var(--color-comment)]" />
                 </button>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-4 mb-6">
+              <div className="km-mode-grid">
                 {modes.map((mode) => (
                   <button
                     key={mode.id}
@@ -180,30 +177,21 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                       setSelectedMode(mode.id as any);
                       setError(null);
                     }}
-                    className={`relative p-4 rounded-xl border transition-all text-left group overflow-hidden ${
-                      selectedMode === mode.id
-                        ? "border-[var(--color-purple)] bg-[var(--color-purple)]/10"
-                        : "border-[var(--color-line)] hover:border-[var(--color-comment)] bg-[var(--color-line)]/20"
-                    }`}
+                    aria-pressed={selectedMode === mode.id}
+                    className="km-mode-option"
                   >
                     <div
-                      className={`w-10 h-10 rounded-lg bg-gradient-to-br ${mode.color} flex items-center justify-center text-white mb-3 shadow-lg`}
+                      className={`w-10 h-10 rounded-sm bg-gradient-to-br ${mode.color} flex items-center justify-center text-[#26254a] mb-3`}
                     >
                       {mode.icon}
                     </div>
-                    <h3 className="font-semibold text-[var(--color-fg)] mb-1">
+                    <b className="text-[var(--color-fg)] mb-1 block">
                       {mode.title}
-                    </h3>
-                    <p className="text-xs text-[var(--color-comment)] leading-relaxed">
+                    </b>
+                    <small className="text-[var(--color-comment)] leading-relaxed">
                       {mode.desc}
-                    </p>
+                    </small>
 
-                    {selectedMode === mode.id && (
-                      <motion.div
-                        layoutId="active-ring"
-                        className="absolute inset-0 border-2 border-[var(--color-purple)] rounded-xl pointer-events-none"
-                      />
-                    )}
                   </button>
                 ))}
               </div>
@@ -332,7 +320,7 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                       }
                       placeholder="Enter room code (e.g. XKQR)"
                       maxLength={4}
-                      className="w-full bg-[var(--color-line)]/20 border border-[var(--color-line)] focus:border-[var(--color-purple)] rounded-xl py-3 px-4 text-lg font-mono tracking-widest outline-none transition-all placeholder-[var(--color-comment)] text-[var(--color-fg)]"
+                      className="km-input font-mono tracking-widest"
                     />
                   </motion.div>
                 )}
@@ -351,17 +339,17 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
                 )}
               </AnimatePresence>
 
-              <div className="flex justify-end gap-4">
+              <div className="flex justify-end gap-3 mt-5">
                 <button
                   onClick={handleClose}
-                  className="px-6 py-2 text-[var(--color-comment)] hover:text-[var(--color-fg)] font-medium"
+                  className="km-button-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleStart}
                   disabled={!selectedMode || isLoading}
-                  className="px-8 py-2 rounded-lg bg-[var(--color-purple)] hover:bg-[var(--color-pink)] text-white font-medium flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="km-button"
                 >
                   {isLoading ? (
                     <>

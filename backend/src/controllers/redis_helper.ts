@@ -74,16 +74,23 @@ export async function getSocketRoom(socketId: string, redisClient: Redis) {
 }
 // WORD HISTORY HELPERS
 export const WORD_HISTORY_KEY = (roomId: string) => `words:${roomId}`;
+export const WORD_AUTHORS_KEY = (roomId: string) => `word-authors:${roomId}`;
 export async function pushWord(
   redisClient: Redis,
   roomId: string,
   word: string,
+  userId: string,
 ) {
   try {
     const key = WORD_HISTORY_KEY(roomId);
-    await redisClient.rpush(key, word);
-
-    await redisClient.ltrim(key, -100, -1);
+    const authorsKey = WORD_AUTHORS_KEY(roomId);
+    await redisClient
+      .multi()
+      .rpush(key, word)
+      .rpush(authorsKey, userId)
+      .ltrim(key, -100, -1)
+      .ltrim(authorsKey, -100, -1)
+      .exec();
     //last 100 words to be kept in db
     console.log(`[Redis] Word added to history for room ${roomId}: ${word}`);
   } catch (error) {
@@ -102,6 +109,9 @@ export async function getLastWord(redisClient: Redis, roomId: string) {
 }
 export async function getWords(redisClient: Redis, roomId: string) {
   return await redisClient.lrange(WORD_HISTORY_KEY(roomId), 0, -1);
+}
+export async function getWordAuthors(redisClient: Redis, roomId: string) {
+  return await redisClient.lrange(WORD_AUTHORS_KEY(roomId), 0, -1);
 }
 //HELPER TO FLAG DUPLICATE WORDS
 export async function findWord(
