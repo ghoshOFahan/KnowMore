@@ -11,7 +11,6 @@ const redisConnection = new Redis(process.env.REDIS_URL as string, {
   enableReadyCheck: false,
   lazyConnect: true,
   showFriendlyErrorStack: true,
-  tls: { rejectUnauthorized: false },
 });
 
 redisConnection.on("connect", () => console.log("[Worker Redis] Connected"));

@@ -1,5 +1,4 @@
-const BACKEND_URL =
-  "https://knowmore-backend.jollybay-f5e1622e.centralindia.azurecontainerapps.io";
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:3001";
 
 async function handler(request: Request) {
   const url = new URL(request.url);
@@ -34,14 +33,16 @@ async function handler(request: Request) {
   responseHeaders.delete("content-length");
   responseHeaders.delete("transfer-encoding");
 
-  // FIX : Rewrite Set-Cookie headers to strip the Azure domain.
-  // This forces the browser to set the cookie on knowmore.ahanghosh.site
+  // Preserve shared-domain cookies; remove a host-only backend Domain if present.
   const setCookies = responseHeaders.getSetCookie();
   if (setCookies && setCookies.length > 0) {
     responseHeaders.delete("set-cookie");
     for (const cookie of setCookies) {
-      // Remove 'Domain=...;' so the browser defaults to the frontend domain
-      const rewrittenCookie = cookie.replace(/Domain=[^;]+;?\s*/gi, "");
+      const rewrittenCookie = cookie.replace(/Domain=[^;]+;?\s*/gi, (domain) =>
+        domain.toLowerCase().includes(new URL(BACKEND_URL).hostname.toLowerCase())
+          ? ""
+          : domain,
+      );
       responseHeaders.append("set-cookie", rewrittenCookie);
     }
   }

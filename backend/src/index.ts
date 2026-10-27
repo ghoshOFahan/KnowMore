@@ -5,6 +5,8 @@ import { createServer } from "http";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { auth } from "./auth.js";
+import { db } from "./db/db.js";
+import { sql } from "drizzle-orm";
 import { toNodeHandler } from "better-auth/node";
 
 // Import API routes and Socket initialization
@@ -19,7 +21,7 @@ const host = "0.0.0.0";
 app.use(express.json()); // Required to parse req.body for REST endpoints
 app.use(
   cors({
-    origin: "https://knowmore.ahanghosh.site",
+    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
     credentials: true,
   }),
 );
@@ -29,19 +31,35 @@ app.use((req, res, next) => {
   next();
 });
 // Setup BullMQ Queue globally so controllers can push to it
-const redisConnection = new Redis(process.env.REDIS_URL as string, {
-  tls: { rejectUnauthorized: false },
-});
+const redisConnection = new Redis(process.env.REDIS_URL as string);
 export const analyticsQueue = new Queue("identity-analyzer", {
   connection: redisConnection,
+});
+
+// Keep this endpoint independent of auth so the proxy can check dependencies.
+app.get("/health", async (_req, res) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.all([redisConnection.ping(), db.execute(sql`select 1`)]),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("Health check timed out")), 3000);
+      }),
+    ]);
+    res.status(200).json({ status: "ok" });
+  } catch {
+    res.status(503).json({ status: "unhealthy" });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 });
 
 // Mount the REST API
 app.use("/api", apiRoutes);
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send(
-    `<h1>hey there welcome to KnowMore! To go to site https://knowmore.ahanghosh.site/ </h1>`,
+    `<h1>KnowMore API is running. Visit ${process.env.FRONTEND_URL ?? "http://localhost:3000"}</h1>`,
   );
 });
 

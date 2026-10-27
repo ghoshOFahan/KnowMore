@@ -1,0 +1,4 @@
+api.ahanghosh.me {
+    encode zstd gzip
+    reverse_proxy backend:3001
+}

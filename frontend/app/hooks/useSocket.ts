@@ -14,7 +14,7 @@ export function getSocket(): Socket<
   if (!socket) {
     socket = io(
       process.env.NEXT_PUBLIC_SOCKET_URL ??
-        "https://knowmore-backend.jollybay-f5e1622e.centralindia.azurecontainerapps.io",
+        "http://localhost:3001",
       {
         withCredentials: true,
         autoConnect: true,
