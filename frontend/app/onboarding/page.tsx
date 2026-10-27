@@ -46,7 +46,6 @@ export default function Onboarding() {
   const handleSubmit = async () => {
     if (selected.length !== 5) return;
     setIsSubmitting(true);
-    console.log(`${process.env.NEXT_PUBLIC_API_URL}`);
     const res = await fetch(`/api/onboarding`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
