@@ -37,7 +37,7 @@ export default function Navbar() {
         {isAuthenticated ? (
           <div className="flex items-center gap-4">
             <Link
-              href="/profile"
+              href="/dashboard"
               className="hidden md:flex items-center gap-2 text-sm font-medium hover:text-(--color-purple) transition-colors"
             >
               <div className="w-8 h-8 rounded-full bg-(--color-line) flex items-center justify-center border border-(--color-line)">
