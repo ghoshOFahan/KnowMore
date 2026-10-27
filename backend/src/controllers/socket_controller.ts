@@ -237,7 +237,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
           `;
 
           let commentary =
-            "Review the word chain above! (AI Commentator is overloaded)";
+            "Review the word chain above! (Commentary is unavailable right now.)";
           try {
             commentary = await getFunnyComment(gameSummary);
           } catch (error) {}
