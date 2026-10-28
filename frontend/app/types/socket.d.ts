@@ -40,7 +40,8 @@ export interface ClientToServerEvents {
   submitWord: ({ roomId, word }) => void;
   leaveRoom: ({ roomId, clientId }) => void;
   sendChatMessage: (data: { roomId: string; text: string }) => void;
-  submitPostgame: (data: { roomId: string; word: string; guess: string; targetId: string }) => void;
+  submitSync: (data: { roomId: string; word: string }) => void;
+  submitReadMe: (data: { roomId: string; targetId: string; topic: string }) => void;
 }
 
 export interface InterServerEvents {

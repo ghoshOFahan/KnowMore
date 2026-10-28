@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Copy } from "lucide-react";
 import type { GameState } from "../types/game";
 import Navbar from "./Navbar";
+import FingerprintEmblem from "./FingerprintEmblem";
 
 type WaitingLobbyProps = { players: GameState["players"]; roomId: string; maxPlayers: number };
 
@@ -35,7 +36,7 @@ export default function WaitingLobby({ players, roomId, maxPlayers }: WaitingLob
             <span>{players.length} / {maxPlayers}</span>
           </div>
           <div className="km-divider my-3" />
-          {players.map((player) => <p className="my-2" key={player.id}>{player.username}</p>)}
+          {players.map((player) => <div className="km-lobby-player" key={player.id}>{player.isBot ? <span className="km-player-mark">✦</span> : <FingerprintEmblem size={36} anchors={[]} label={`${player.username}'s fingerprint`} />}<span>{player.username}</span></div>)}
           {players.length === 0 && <p className="km-muted">Waiting for players…</p>}
         </div>
         <button className="km-button-gold" onClick={handleCopy}><Copy size={16} /> {copied ? "Invite copied" : "Copy invite link"}</button>

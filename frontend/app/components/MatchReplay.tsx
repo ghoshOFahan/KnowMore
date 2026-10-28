@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Play, Share2 } from "lucide-react";
 import { makeReplayVideo } from "../lib/replayVideo";
 
-export default function MatchReplay({ words, names, scores }: { words: string[]; names: string[]; scores: (number | null)[] }) {
+export default function MatchReplay({ words, names, scores, recap = [] }: { words: string[]; names: string[]; scores: (number | null)[]; recap?: string[] }) {
   const [visible, setVisible] = useState(words.length);
   const [playing, setPlaying] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -51,6 +51,7 @@ export default function MatchReplay({ words, names, scores }: { words: string[];
     <div className="km-replay-story">
       <p>This trail ran through <b>{words.length} words</b>{leader ? <>. <b>{leader[0]}</b> added {leader[1]} of them.</> : "."}</p>
       {strongest && strongest.index > 0 && <p>The clearest link was <b>{words[strongest.index - 1]} → {words[strongest.index]}</b> at {Math.round(strongest.score * 100)}% strength.</p>}
+      {!!recap.length && <ul className="km-recap-lines">{recap.slice(0, 3).map((line) => <li key={line}>{line}</li>)}</ul>}
     </div>
     <div className="km-replay-actions"><button type="button" className="km-button-secondary" onClick={() => { setVisible(0); setPlaying(true); }}><Play size={16} /> Play replay</button><button type="button" className="km-button-secondary" onClick={() => { void shareReplay(); }} disabled={exporting}><Share2 size={16} /> {exporting ? "Rendering…" : "Share video"}</button></div>
     {status && <small className="km-muted">{status}</small>}

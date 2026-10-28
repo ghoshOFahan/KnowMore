@@ -27,6 +27,19 @@ export async function embedWord(word: string): Promise<number[]> {
 
   return values;
 }
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  if (!texts.length) return [];
+  const response = await ai.models.embedContent({
+    model: "gemini-embedding-001",
+    contents: texts,
+    config: { outputDimensionality: 768 },
+  });
+  const values = response.embeddings?.map((embedding) => embedding.values ?? []);
+  if (!values || values.length !== texts.length || values.some((embedding) => !embedding.length)) {
+    throw new Error("Batch embedding generation failed.");
+  }
+  return values;
+}
 export async function getEmbeddings(words: string[]): Promise<number[][]> {
   const promises = words.map((word) => embedWord(word));
   return Promise.all(promises);

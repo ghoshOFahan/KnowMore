@@ -1,3 +1,5 @@
+import { fingerprintEmblem } from "./fingerprintEmblem";
+
 type Anchor = { subject: string; score: number };
 
 export interface IdentityCardData {
@@ -50,16 +52,17 @@ export function createIdentityCard(data: IdentityCardData): string {
   const matches = Math.max(0, Math.round(data.matches));
   const winRate = Math.max(0, Math.min(100, Math.round(data.winRate)));
   const words = Math.max(0, Math.round(data.words));
+  const emblem = fingerprintEmblem(axes);
   const badgePoints = Array.from({ length: 5 }, (_, index) => {
-    const angle = -Math.PI / 2 + index * 2 * Math.PI / 5;
-    const radius = 7 + ((axes[index]?.score ?? 0) / strongestScore) * 20;
+    const angle = -Math.PI / 2 + ((index + emblem.rotation) * 2 * Math.PI) / 5;
+    const radius = 5 + ((emblem.values[index]?.score ?? 0) / Math.max(1, ...emblem.values.map((anchor) => anchor.score))) * 20;
     return `${(82 + Math.cos(angle) * radius).toFixed(1)},${(86 + Math.sin(angle) * radius).toFixed(1)}`;
   }).join(" ");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" role="img" aria-label="${name}'s KnowMore word trail card">
     <rect width="${WIDTH}" height="${HEIGHT}" fill="#17152c"/>
     <rect x="34" y="34" width="732" height="1062" rx="20" fill="#24213f" stroke="#4b4576" stroke-width="2"/>
-    <circle cx="82" cy="86" r="28" fill="#ffdaa0"/><polygon points="${badgePoints}" fill="#26254a" stroke="#26254a" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="82" cy="86" r="28" fill="${emblem.color}"/><polygon points="${badgePoints}" fill="#26254a" stroke="#26254a" stroke-width="2" stroke-linejoin="round"/>
     <text x="126" y="98" fill="#f2f0ff" font-family="Georgia,serif" font-size="34" font-weight="bold">KnowMore</text>
     <text x="718" y="92" text-anchor="end" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">WORD TRAILS</text>
     <line x1="72" x2="728" y1="128" y2="128" stroke="#4b4576" stroke-width="2"/>

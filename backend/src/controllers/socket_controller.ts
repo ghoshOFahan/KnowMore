@@ -21,11 +21,12 @@ import {
   findWord,
 } from "./redis_helper.js";
 import { judgeWords } from "../ai/judge.js";
+import { embedTexts, cosineSimilarity } from "../ai/embeddingJudge.js";
 import { chooseBotWord } from "../ai/wordBot.js";
 import { auth } from "../auth.js";
 import { db } from "../db/db.js";
 import { games, gamePlayers, topicAnchors, topics } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -44,7 +45,10 @@ const CHAT_KEY = (roomId: string) => `gameChat:${roomId}`;
 const lastChatAt = new Map<string, number>();
 const postgameTimeouts = new Map<string, NodeJS.Timeout>();
 const revealingRooms = new Set<string>();
+const readingRooms = new Set<string>();
 const POSTGAME_KEY = (roomId: string) => `postgameAnswers:${roomId}`;
+const POSTGAME_READ_KEY = (roomId: string) => `postgameRead:${roomId}`;
+const POSTGAME_TOPIC_KEY = (roomId: string) => `postgameTopics:${roomId}`;
 const DAILY_WORDS = ["ocean", "forest", "light", "memory", "bridge", "river", "dream", "music", "garden", "orbit", "paper", "echo", "stone", "cloud", "fire", "window", "rain", "path", "color", "time", "island", "signal", "shadow", "flower", "winter", "dance", "horizon", "book", "moon", "home", "spark"];
 const dailyDate = () => new Date().toISOString().slice(0, 10);
 function dailyStarter(date: string) {
@@ -160,95 +164,165 @@ async function emitCurrentState(io: Server, roomId: string, gameState: GameState
 
 async function getPostgameRadars(participants: { clientId: string; username: string }[]) {
   return Promise.all(participants.map(async (participant) => {
-    const rows = await db.select({ subject: topics.name, score: topicAnchors.currentScore })
+    const [rows, history] = await Promise.all([db.select({ subject: topics.name, score: topicAnchors.currentScore })
       .from(topicAnchors)
       .innerJoin(topics, eq(topicAnchors.topicId, topics.id))
-      .where(eq(topicAnchors.userId, participant.clientId));
-    const highest = Math.max(1, ...rows.map((row) => row.score ?? 0));
+      .where(eq(topicAnchors.userId, participant.clientId)), db.select({ scores: gamePlayers.anchorScores }).from(gamePlayers).where(eq(gamePlayers.userId, participant.clientId))]);
+    const totals = new Map<string, number>();
+    history.forEach(({ scores }) => Object.entries(scores ?? {}).forEach(([subject, score]) => totals.set(subject, (totals.get(subject) ?? 0) + score)));
+    const highest = Math.max(1, ...rows.map((row) => totals.get(row.subject) ?? row.score ?? 0));
     return { clientId: participant.clientId, anchors: rows.map((row) => ({
       subject: row.subject,
-      score: Math.round(((row.score ?? 0) / highest) * 10),
+      score: Math.round(((totals.get(row.subject) ?? row.score ?? 0) / highest) * 10),
     })) };
   }));
 }
 
-async function makeIcebreaker(
-  participants: { clientId: string; username: string }[],
-  radars: { clientId: string; anchors: { subject: string; score: number }[] }[],
-) {
-  const [first, second] = participants;
-  if (!first || !second) return "";
-  const firstTopics = radars.find((radar) => radar.clientId === first.clientId)?.anchors ?? [];
-  const secondTopics = radars.find((radar) => radar.clientId === second.clientId)?.anchors ?? [];
-  const firstTop = [...firstTopics].sort((a, b) => b.score - a.score)[0]?.subject ?? "words";
-  const secondTop = [...secondTopics].sort((a, b) => b.score - a.score)[0]?.subject ?? "words";
+async function makeIcebreakers(participants: { clientId: string; username: string }[], radars: { clientId: string; anchors: { subject: string; score: number }[] }[], words: { clientId: string; words: string[] }[]) {
+  const first = participants[0];
+  const second = participants[1];
+  if (!first || !second) return [] as string[];
+  const a = radars.find((item) => item.clientId === first.clientId)?.anchors ?? [];
+  const b = radars.find((item) => item.clientId === second.clientId)?.anchors ?? [];
+  const shared = [...a].filter((topic) => b.some((other) => other.subject === topic.subject)).sort((x, y) => Math.min(y.score, b.find((topic) => topic.subject === y.subject)?.score ?? 0) - Math.min(x.score, b.find((topic) => topic.subject === x.subject)?.score ?? 0))[0]?.subject;
+  const topA = [...a].sort((x, y) => y.score - x.score)[0]?.subject ?? "words";
+  const topB = [...b].sort((x, y) => y.score - x.score)[0]?.subject ?? "words";
+  const biggestGap = [...new Set([...a.map((topic) => topic.subject), ...b.map((topic) => topic.subject)])].map((subject) => ({ subject, gap: Math.abs((a.find((topic) => topic.subject === subject)?.score ?? 0) - (b.find((topic) => topic.subject === subject)?.score ?? 0)) })).sort((x, y) => y.gap - x.gap)[0]?.subject ?? topA;
+  const sample = (id: string) => words.find((entry) => entry.clientId === id)?.words.slice(0, 3) ?? [];
+  const fallback = [
+    shared ? "You both returned to " + shared + ". What kept drawing you in?" : "Your trails leaned toward " + topA + " and " + topB + ". What made those words stand out?",
+    topA !== topB ? first.username + " leaned toward " + topA + ", while " + second.username + " leaned toward " + topB + ". Which link surprised you?" : "You both leaned toward " + topA + ". Which word would you explore next?",
+    "Looking at " + (sample(first.clientId).join(", ") || topA) + " and " + (sample(second.clientId).join(", ") || topB) + ", what connection did you notice?",
+  ];
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash-lite",
-      contents: `Write one friendly, non-romantic conversation question for two word-game players. Use their actual topic maps. ${first.username}: ${JSON.stringify(firstTopics)}. ${second.username}: ${JSON.stringify(secondTopics)}. Find one overlap or difference and make a specific question they can ask each other. Keep it under 22 words. Return only the question.`,
+      contents: "Write exactly 3 separate one-sentence conversation starters. Line 1 about shared anchor " + (shared ?? "none") + ", line 2 about the biggest topic gap " + biggestGap + ", line 3 an open question based on sample words. Friendly, non-romantic. Do not guess personal attributes or mention health, religion, politics, or age. Use only supplied topics and words. Maximum 18 words each. Return only 3 lines. Maps: " + JSON.stringify([{ name: first.username, topics: a }, { name: second.username, topics: b }]) + ". Sample words: " + JSON.stringify([{ name: first.username, words: sample(first.clientId) }, { name: second.username, words: sample(second.clientId) }]),
     });
-    return (response.text ?? "").trim().replace(/^["']|["']$/g, "").slice(0, 220);
+    const lines = (response.text ?? "").split("\n").map((line) => line.replace(/^\s*(?:\d+[.)-]|[-*])\s*/, "").trim()).filter(Boolean).slice(0, 3);
+    return lines.length === 3 ? lines.map((line) => line.slice(0, 200)) : fallback;
   } catch (error) {
-    console.error("Could not create match icebreaker:", error);
-    return `${first.username} leans toward ${firstTop}; ${second.username} leans toward ${secondTop}. What drew you there?`;
+    console.error("Could not create match icebreakers:", error);
+    return fallback;
   }
 }
 
-async function revealPostgame(io: Server, roomId: string) {
+async function revealReadMe(io: Server, roomId: string) {
+  if (readingRooms.has(roomId)) return;
+  readingRooms.add(roomId);
+  try {
+  const gameState = await getGame(redis, roomId);
+  const postgame = gameState?.postgame;
+  if (!gameState || !postgame || postgame.phase !== "READ_COLLECTING") return;
+  const [guesses, actuals, words, authors] = await Promise.all([
+    redis.hgetall(POSTGAME_READ_KEY(roomId)), redis.hgetall(POSTGAME_TOPIC_KEY(roomId)),
+    getWords(redis, roomId), getWordAuthors(redis, roomId),
+  ]);
+  postgame.readReveals = Object.entries(guesses).flatMap(([clientId, raw]) => {
+    const player = postgame.participants.find((item) => item.clientId === clientId);
+    if (!player) return [];
+    const guess = JSON.parse(raw) as { targetId: string; topic: string };
+    const actual = actuals[guess.targetId] || null;
+    return [{ clientId, username: player.username, targetId: guess.targetId, guess: guess.topic, actual, correct: !!actual && actual === guess.topic }];
+  });
+  for (const row of postgame.readReveals) if (row.correct) postgame.bonusScores![row.clientId] = (postgame.bonusScores?.[row.clientId] ?? 0) + 2;
+  const playersWords = postgame.participants.map((player) => ({ clientId: player.clientId, words: words.filter((_, index) => authors[index] === player.clientId) }));
+  postgame.icebreakers = await makeIcebreakers(postgame.participants, postgame.radars ?? [], playersWords);
+  postgame.phase = "REVEALED";
+  await setGame(redis, roomId, gameState);
+  await emitCurrentState(io, roomId, gameState);
+  const timer = postgameTimeouts.get(roomId);
+  if (timer) clearTimeout(timer);
+  postgameTimeouts.delete(roomId);
+  } finally { readingRooms.delete(roomId); }
+}
+
+async function prepareReadMe(io: Server, roomId: string) {
   if (revealingRooms.has(roomId)) return;
   revealingRooms.add(roomId);
   try {
-    const gameState = await getGame(redis, roomId);
-    const postgame = gameState?.postgame;
-    if (!gameState || !postgame || postgame.phase !== "COLLECTING") return;
-    const stored = await redis.hgetall(POSTGAME_KEY(roomId));
-    const answers = postgame.participants.flatMap((participant) => {
-      const raw = stored[participant.clientId];
-      if (!raw) return [];
-      const answer = JSON.parse(raw) as { word: string; guess: string; targetId: string };
-      return [{ clientId: participant.clientId, username: participant.username, ...answer, readMe: false }];
+    const state = await getGame(redis, roomId);
+    const postgame = state?.postgame;
+    if (!state || !postgame || postgame.phase !== "SYNC_COLLECTING") return;
+    const raw = await redis.hgetall(POSTGAME_KEY(roomId));
+    const syncAnswers = postgame.participants.flatMap((player) => raw[player.clientId] ? [{ clientId: player.clientId, username: player.username, word: raw[player.clientId]! }] : []);
+    const full = syncAnswers.length === postgame.participants.length;
+    const syncs: NonNullable<typeof postgame.syncs> = [];
+    const points: Record<string, number> = {};
+    const humans = postgame.participants.filter((player) => !player.clientId.startsWith("bot:"));
+    const radars = await getPostgameRadars(humans).catch((error) => {
+      console.error("Could not load player maps:", error);
+      return [] as { clientId: string; anchors: { subject: string; score: number }[] }[];
     });
-    const syncs: { firstId: string; secondId: string; related: boolean; exact: boolean }[] = [];
-    for (let first = 0; first < answers.length; first++) {
-      for (let second = first + 1; second < answers.length; second++) {
-        const left = answers[first]!;
-        const right = answers[second]!;
-        const exact = left.word === right.word;
-        let related = exact;
-        if (!exact) {
-          try { related = (await judgeWords(left.word, right.word)).isValid; }
-          catch (error) { console.error("Could not compare sync words:", error); }
-        }
-        syncs.push({ firstId: left.clientId, secondId: right.clientId, related, exact });
+    const choices = [...new Set(radars.flatMap((radar) => radar.anchors.map((anchor) => anchor.subject)))];
+    const available = await db.select({ subject: topics.name, vector: topics.embeddingVector }).from(topics).catch(() => [] as { subject: string; vector: number[] }[]);
+    const decoy = available.find((topic) => !choices.includes(topic.subject))?.subject;
+    if (decoy) choices.push(decoy);
+    const words = await getWords(redis, roomId);
+    const authors = await getWordAuthors(redis, roomId);
+    const authored = postgame.participants.flatMap((player) => words.flatMap((word, index) => authors[index] === player.clientId ? [{ clientId: player.clientId, word }] : []).slice(-25));
+    const anchorRows = humans.length ? await db.select({ userId: topicAnchors.userId, subject: topics.name, vector: topics.embeddingVector }).from(topicAnchors).innerJoin(topics, eq(topicAnchors.topicId, topics.id)).where(inArray(topicAnchors.userId, humans.map((player) => player.clientId))).catch(() => []) : [];
+    const actuals: Record<string, string> = {};
+    const hasTopicWords = authored.length > 0 && (anchorRows.length > 0 || available.length > 0);
+    const syncVectorCount = full ? syncAnswers.length : 0;
+    const embedInput = [...(full ? syncAnswers.map((answer) => answer.word) : []), ...(hasTopicWords ? authored.map((item) => item.word) : [])];
+    let vectors: number[][] = [];
+    if (embedInput.length) {
+      try { vectors = await embedTexts(embedInput); }
+      catch (error) { console.error("Could not embed match reveal data:", error); }
+    }
+    if (hasTopicWords && vectors.length >= syncVectorCount + authored.length) {
+        const totals = new Map<string, Map<string, number>>();
+        authored.forEach((item, index) => {
+          const scores = totals.get(item.clientId) ?? new Map<string, number>();
+          const player = postgame.participants.find((candidate) => candidate.clientId === item.clientId);
+          const candidates = player?.clientId.startsWith("bot:") ? available.filter((row) => choices.includes(row.subject)) : anchorRows.filter((row) => row.userId === item.clientId);
+          for (const anchor of candidates) scores.set(anchor.subject, (scores.get(anchor.subject) ?? 0) + Math.max(0, cosineSimilarity(vectors[syncVectorCount + index]!, anchor.vector as number[])));
+          totals.set(item.clientId, scores);
+        });
+        for (const [id, scores] of totals) { const top = [...scores].sort((a, b) => b[1] - a[1])[0]?.[0]; if (top) actuals[id] = top; }
+    }
+    if (full) {
+      for (let i = 0; i < syncAnswers.length; i++) for (let j = i + 1; j < syncAnswers.length; j++) {
+        const a = syncAnswers[i]!; const b = syncAnswers[j]!;
+        const similarity = a.word === b.word ? 1 : vectors.length >= syncAnswers.length ? cosineSimilarity(vectors[i]!, vectors[j]!) : 0;
+        const result = a.word === b.word ? "SYNCED" : similarity >= 0.8 ? "CLOSE" : "NONE";
+        const score = result === "SYNCED" ? 3 : result === "CLOSE" ? 1 : 0;
+        points[a.clientId] = (points[a.clientId] ?? 0) + score;
+        points[b.clientId] = (points[b.clientId] ?? 0) + score;
+        syncs.push({ firstId: a.clientId, secondId: b.clientId, result, similarity });
       }
     }
-    for (const answer of answers) {
-      const target = answers.find((other) => other.clientId === answer.targetId);
-      if (!target) continue;
-      answer.readMe = answer.guess === target.word;
-      if (!answer.readMe) {
-        try { answer.readMe = (await judgeWords(answer.guess, target.word)).isValid; }
-        catch (error) { console.error("Could not compare read-me guess:", error); }
-      }
-    }
-    let radars: Awaited<ReturnType<typeof getPostgameRadars>> = [];
-    try { radars = await getPostgameRadars(postgame.participants); }
-    catch (error) { console.error("Could not load player maps:", error); }
-    postgame.phase = "REVEALED";
-    postgame.reveals = answers;
+    postgame.phase = "READ_COLLECTING";
+    postgame.deadline = Date.now() + 15_000;
+    postgame.syncSubmittedIds = Object.keys(raw);
+    postgame.syncReveals = full ? syncAnswers : [];
     postgame.syncs = syncs;
-    postgame.radars = radars;
-    try { postgame.icebreaker = await makeIcebreaker(postgame.participants, radars); }
-    catch (error) { console.error("Could not prepare match icebreaker:", error); }
-    await setGame(redis, roomId, gameState);
-    await emitCurrentState(io, roomId, gameState);
-    const timeout = postgameTimeouts.get(roomId);
-    if (timeout) clearTimeout(timeout);
-    postgameTimeouts.delete(roomId);
-  } finally {
-    revealingRooms.delete(roomId);
-  }
+    postgame.bonusScores = points;
+    const botPlayer = postgame.participants.find((player) => player.clientId.startsWith("bot:"));
+    const botTopic = botPlayer ? actuals[botPlayer.clientId] : undefined;
+    postgame.radars = botPlayer && botTopic ? [...radars, { clientId: botPlayer.clientId, anchors: [{ subject: botTopic, score: 10 }] }] : radars;
+    postgame.topicChoices = choices;
+    postgame.readableIds = Object.keys(actuals);
+    const secrets = postgame.participants.map((player) => [player.clientId, actuals[player.clientId] ?? ""] as const);
+    if (secrets.length) await redis.hset(POSTGAME_TOPIC_KEY(roomId), ...secrets.flat());
+    await redis.expire(POSTGAME_TOPIC_KEY(roomId), 86400);
+    const bot = postgame.participants.find((player) => player.clientId.startsWith("bot:"));
+    const target = humans[0];
+    if (bot && target && choices.length) {
+      const seed = [...(postgame.lastWord ?? "").toLowerCase()].reduce((sum, letter) => sum + letter.charCodeAt(0), 0);
+      const guess = choices[seed % choices.length]!;
+      await redis.hset(POSTGAME_READ_KEY(roomId), bot.clientId, JSON.stringify({ targetId: target.clientId, topic: guess }));
+      await redis.expire(POSTGAME_READ_KEY(roomId), 86400);
+      postgame.readSubmittedIds = [bot.clientId];
+    }
+    await setGame(redis, roomId, state);
+    await emitCurrentState(io, roomId, state);
+    const timer = postgameTimeouts.get(roomId);
+    if (timer) clearTimeout(timer);
+    postgameTimeouts.set(roomId, setTimeout(() => { void revealReadMe(io, roomId).catch((error) => console.error("Could not reveal Read Me:", error)); }, 15_000));
+  } finally { revealingRooms.delete(roomId); }
 }
 
 async function completeGame(
@@ -264,15 +338,32 @@ async function completeGame(
   gameState.status = "FINISHED";
   delete gameState.turnExpiresAt;
   const connectedHumans = gameState.players.filter((player) => !player.isBot && io.sockets.sockets.has(player.id));
-  if (allowPostgame && connectedHumans.length >= 2) {
+  const botPlayer = gameState.players.find((player) => player.isBot);
+  const participants = [...connectedHumans, ...(botPlayer && connectedHumans.length ? [botPlayer] : [])];
+  if (allowPostgame && participants.length >= 2) {
     gameState.postgame = {
-      phase: "COLLECTING",
-      deadline: Date.now() + 45_000,
+      phase: "SYNC_COLLECTING",
+      deadline: Date.now() + 15_000,
       lastWord: await getLastWord(redis, gameState.roomId),
-      participants: connectedHumans.map((player) => ({ clientId: player.clientId, username: player.username })),
-      submittedIds: [],
+      participants: participants.map((player) => ({ clientId: player.clientId, username: player.username })),
+      syncSubmittedIds: [],
+      readSubmittedIds: [],
     };
-    postgameTimeouts.set(gameState.roomId, setTimeout(() => { void revealPostgame(io, gameState.roomId).catch((error) => console.error("Could not reveal postgame:", error)); }, 45_000));
+    if (botPlayer) {
+      try {
+        const lastWord = gameState.postgame.lastWord ?? "beginning";
+        const used = await getWords(redis, gameState.roomId);
+        const suggestions = await chooseBotWord(lastWord, used);
+        const word = suggestions[0] ?? (lastWord + "s").slice(0, 32);
+        if (/^[a-z]{1,32}$/i.test(word) && !used.includes(word)) {
+          await redis.hset(POSTGAME_KEY(gameState.roomId), botPlayer.clientId, word.toLowerCase());
+          await redis.expire(POSTGAME_KEY(gameState.roomId), 86400);
+          gameState.postgame.syncSubmittedIds = [botPlayer.clientId];
+        }
+      } catch (error) { console.error("Thinker could not choose a sync word:", error); }
+    }
+    gameState.postgame.deadline = Date.now() + 15_000;
+    postgameTimeouts.set(gameState.roomId, setTimeout(() => { void prepareReadMe(io, gameState.roomId).catch((error) => console.error("Could not prepare Read Me:", error)); }, 15_000));
   }
   await setGame(redis, gameState.roomId, gameState);
   await emitCurrentState(io, gameState.roomId, gameState);
@@ -502,6 +593,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         wordHistory: [],
         ...(mode === "daily" ? { dailyDate: dailyDate() } : {}),
       };
+      newGame.playerRadars = await getPostgameRadars([{ clientId: dbUserId, username }]).catch(() => []);
       await setGame(redis, roomId, newGame);
       await setSocketRoom(redis, socket.id, roomId);
       socket.join(roomId);
@@ -536,6 +628,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         return socket.emit("gameError", "player already in room");
 
       gameState.players.push({ id: socket.id, username, clientId: dbUserId, livesRemaining: 3 });
+      gameState.playerRadars = await getPostgameRadars(gameState.players.filter((player) => !player.isBot).map((player) => ({ clientId: player.clientId, username: player.username }))).catch(() => gameState.playerRadars ?? []);
       if (gameState.players.length === gameState.maxPlayers) {
         gameState.status = "INGAME";
       }
@@ -652,8 +745,10 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         socket.join(roomId);
         await sendChatHistory(socket, roomId);
         await emitCurrentState(io, roomId, gameState);
-        if (gameState.postgame?.phase === "COLLECTING" && gameState.postgame.deadline <= Date.now()) {
-          void revealPostgame(io, roomId);
+        if (gameState.postgame?.phase === "SYNC_COLLECTING" && gameState.postgame.deadline <= Date.now()) {
+          void prepareReadMe(io, roomId);
+        } else if (gameState.postgame?.phase === "READ_COLLECTING" && gameState.postgame.deadline <= Date.now()) {
+          void revealReadMe(io, roomId);
         }
         if (gameState.status === "INGAME" && !turnTimeouts.has(roomId) && !processingRooms.has(roomId)) {
           const currentPlayer = gameState.players.find((item) => item.id === gameState.currentPlayerId);
@@ -746,30 +841,66 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       io.to(roomId).emit("chatMessage", message);
     });
 
-    socket.on("submitPostgame", async ({ roomId, word, guess, targetId }) => {
-      if (typeof roomId !== "string" || typeof word !== "string" || typeof guess !== "string" || typeof targetId !== "string") return;
-      const answer = { word: word.trim().toLowerCase(), guess: guess.trim().toLowerCase(), targetId };
-      if (!/^[a-z]{1,32}$/.test(answer.word) || !/^[a-z]{1,32}$/.test(answer.guess)) {
-        socket.emit("gameError", "Use one English word for each answer.");
+    socket.on("submitSync", async ({ roomId, word }) => {
+      if (typeof roomId !== "string" || typeof word !== "string") return;
+      const answer = word.trim().toLowerCase();
+      if (!/^[a-z]{1,32}$/.test(answer)) {
+        socket.emit("gameError", "Use one English word for Sync.");
         return;
       }
       const gameState = await getGame(redis, roomId);
       const postgame = gameState?.postgame;
       const userId = socket.data.userId;
-      if (!gameState || gameState.status !== "FINISHED" || !postgame || postgame.phase !== "COLLECTING") return;
+      if (!gameState || gameState.status !== "FINISHED" || !postgame || postgame.phase !== "SYNC_COLLECTING") return;
       if (!postgame.participants.some((participant) => participant.clientId === userId)) return;
-      if (!postgame.participants.some((participant) => participant.clientId === targetId && targetId !== userId)) return;
-      if (postgame.deadline <= Date.now()) { await revealPostgame(io, roomId); return; }
+      if (postgame.deadline <= Date.now()) { await prepareReadMe(io, roomId); return; }
+      const usedWords = await getWords(redis, roomId);
+      if (usedWords.some((used) => used.toLowerCase() === answer)) {
+        socket.emit("gameError", "Choose a word that has not appeared in the trail.");
+        return;
+      }
+      if (postgame.lastWord) {
+        try {
+          const judgment = await judgeWords(postgame.lastWord, answer);
+          if (!judgment.isValid) {
+            socket.emit("gameError", "Choose a word with a clear connection to the final word.");
+            return;
+          }
+        } catch (error) {
+          console.error("Could not verify Sync word:", error);
+        }
+      }
       const key = POSTGAME_KEY(roomId);
-      if (await redis.hsetnx(key, userId, JSON.stringify(answer)) === 0) return;
+      if (await redis.hsetnx(key, userId, answer) === 0) return;
       await redis.expire(key, 86400);
       const submittedIds = await redis.hkeys(key);
       const latest = await getGame(redis, roomId);
-      if (!latest?.postgame || latest.postgame.phase !== "COLLECTING") return;
-      latest.postgame.submittedIds = submittedIds;
+      if (!latest?.postgame || latest.postgame.phase !== "SYNC_COLLECTING") return;
+      latest.postgame.syncSubmittedIds = submittedIds;
       await setGame(redis, roomId, latest);
       await emitCurrentState(io, roomId, latest);
-      if (submittedIds.length >= postgame.participants.length) await revealPostgame(io, roomId);
+      if (submittedIds.length >= postgame.participants.length) await prepareReadMe(io, roomId);
+    });
+
+    socket.on("submitReadMe", async ({ roomId, targetId, topic }) => {
+      if (typeof roomId !== "string" || typeof targetId !== "string" || typeof topic !== "string") return;
+      const gameState = await getGame(redis, roomId);
+      const postgame = gameState?.postgame;
+      const userId = socket.data.userId;
+      if (!gameState || !postgame || postgame.phase !== "READ_COLLECTING") return;
+      if (!postgame.participants.some((participant) => participant.clientId === userId)) return;
+      if (targetId === userId || !postgame.readableIds?.includes(targetId) || !postgame.topicChoices?.includes(topic)) return;
+      if (postgame.deadline <= Date.now()) { await revealReadMe(io, roomId); return; }
+      const key = POSTGAME_READ_KEY(roomId);
+      if (await redis.hsetnx(key, userId, JSON.stringify({ targetId, topic })) === 0) return;
+      await redis.expire(key, 86400);
+      const submittedIds = await redis.hkeys(key);
+      const latest = await getGame(redis, roomId);
+      if (!latest?.postgame || latest.postgame.phase !== "READ_COLLECTING") return;
+      latest.postgame.readSubmittedIds = submittedIds;
+      await setGame(redis, roomId, latest);
+      await emitCurrentState(io, roomId, latest);
+      if (submittedIds.length >= latest.postgame.participants.length) await revealReadMe(io, roomId);
     });
 
     socket.on("disconnect", async () => {

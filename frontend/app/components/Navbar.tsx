@@ -33,14 +33,19 @@ export default function Navbar() {
         {menuOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
       <nav id="km-main-navigation" aria-label="Main navigation" className="km-nav-actions">
-        <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/about" ? "page" : undefined} href="/about">
-          How it works
-        </Link>
         {authenticated && (
           <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/dashboard" ? "page" : undefined} href="/dashboard">
             Dashboard
           </Link>
         )}
+        {authenticated && (
+          <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/profile" ? "page" : undefined} href="/profile">
+            Profile
+          </Link>
+        )}
+        <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/about" ? "page" : undefined} href="/about">
+          How it works
+        </Link>
         {!isPending && (authenticated ? (
           <button className="km-nav-link" onClick={() => { setMenuOpen(false); void signOut(); }}>
             Sign out
