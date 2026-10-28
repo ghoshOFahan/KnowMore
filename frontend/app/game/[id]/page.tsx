@@ -35,6 +35,7 @@ export default function GameArena({ params }: GameArenaProps) {
   const router = useRouter();
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [input, setInput] = useState("");
@@ -67,6 +68,10 @@ export default function GameArena({ params }: GameArenaProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [gameState?.wordHistory?.length]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+  }, [chatMessages.length]);
 
   // Attempt reconnect on mount in case of page refresh
   useEffect(() => {
@@ -260,9 +265,9 @@ export default function GameArena({ params }: GameArenaProps) {
               <p className="km-game-hint">Words are checked for meaning and repetition. You are out if your link breaks.</p>
               {isMultiplayer && gameState.status === "INGAME" && <section className="km-match-chat" aria-label="Match chat">
                 <h2><MessageCircle size={17} /> Match chat</h2>
-                <div className="km-chat-messages" role="log" aria-live="polite" aria-relevant="additions">
+                <div ref={chatScrollRef} className="km-chat-messages" role="log" aria-live="polite" aria-relevant="additions">
                   {chatMessages.length === 0 && <p className="km-muted">Say hello to the room.</p>}
-                  {chatMessages.map((message) => <div key={message.id} className={`km-chat-message ${message.playerId === session?.user?.id ? "mine" : ""}`}><small>{message.playerId === session?.user?.id ? "You" : message.playerName}</small><span>{message.text}</span></div>)}
+                  {chatMessages.map((message) => <div key={message.id} className={`km-chat-message ${message.playerId === session?.user?.id ? "mine" : ""}`}><small>{message.playerId === session?.user?.id ? "You" : message.playerName} · {new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small><span>{message.text}</span></div>)}
                 </div>
                 <form className="km-chat-form" onSubmit={(event) => { event.preventDefault(); const text = chatInput.trim(); if (!text) return; socket.emit("sendChatMessage", { roomId, text }); setChatInput(""); }}>
                   <input className="km-input" value={chatInput} onChange={(event) => setChatInput(event.target.value)} maxLength={240} placeholder="Message the room" aria-label="Message the room" />
