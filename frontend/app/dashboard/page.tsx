@@ -3,8 +3,8 @@
 import Navbar from "../components/Navbar";
 import GameModeModal from "../components/GameModeModal";
 import { authClient } from "../auth/authClient";
-import { useEffect, useState } from "react";
-import { Share2, Play } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Share2, Play, Download, X } from "lucide-react";
 import ProtectedRoute from "../auth/ProtectedRoute";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 import { createIdentityCard, identityCardPng } from "../lib/shareIdentityCard";
@@ -48,25 +48,41 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [insights, setInsights] = useState<MindInsights | null>(null);
   const [shareStatus, setShareStatus] = useState("");
+  const [isCardOpen, setIsCardOpen] = useState(false);
+
+  const cardSvg = useMemo(() => createIdentityCard({
+    name: session?.user?.name ?? "KnowMore player",
+    anchors: radarData,
+    leadingInterests: insights?.interests.map((item) => item.subject) ?? [],
+    recentWords: insights?.recentWords ?? [],
+    matches: stats?.totalGames ?? 0,
+    winRate: stats?.winRate ?? 0,
+    words: insights?.totalWords ?? 0,
+  }), [session?.user?.name, radarData, insights, stats]);
+  const cardPreview = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(cardSvg)}`;
+
+  const downloadIdentity = async () => {
+    const png = await identityCardPng(cardSvg);
+    const url = URL.createObjectURL(png);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "knowmore-identity.png";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setShareStatus("Identity card downloaded");
+  };
 
   const shareIdentity = async () => {
     const name = session?.user?.name ?? "A KnowMore player";
     try {
-      const svg = createIdentityCard(name, radarData, stats?.totalGames ?? 0, stats?.winRate ?? 0, insights?.totalWords ?? 0);
-      const png = await identityCardPng(svg);
+      const png = await identityCardPng(cardSvg);
       const file = new File([png], "knowmore-identity.png", { type: "image/png" });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ title: `${name}'s KnowMore identity`, files: [file] });
         setShareStatus("Identity card shared");
         return;
       }
-      const url = URL.createObjectURL(png);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "knowmore-identity.png";
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setShareStatus("Identity card downloaded");
+      await downloadIdentity();
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return;
       setShareStatus("Could not create the identity card");
@@ -110,8 +126,7 @@ export default function Dashboard() {
                   <div className="km-stat"><small>Matches</small><strong>{stats?.totalGames ?? "—"}</strong></div>
                   <div className="km-stat"><small>Win rate</small><strong>{stats ? `${stats.winRate}%` : "—"}</strong></div>
                 </div>
-                <button className="km-button-secondary w-full" type="button" onClick={shareIdentity} aria-label="Share your KnowMore identity card"><Share2 size={15} /> Share identity card</button>
-                <p className="km-share-status" aria-live="polite">{shareStatus}</p>
+                <button className="km-button-secondary w-full" type="button" onClick={() => setIsCardOpen(true)} aria-label="Preview your KnowMore identity card"><Share2 size={15} /> View identity card</button>
               </section>
 
               <section className="km-card">
@@ -192,6 +207,15 @@ export default function Dashboard() {
           </div>
         </main>
         <GameModeModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        {isCardOpen && <div className="km-modal-overlay" onClick={() => setIsCardOpen(false)}>
+          <section className="km-identity-modal" role="dialog" aria-modal="true" aria-labelledby="identity-card-title" onClick={(event) => event.stopPropagation()}>
+            <div className="km-identity-modal-head"><div><p className="km-kicker m-0">Ready to share</p><h2 id="identity-card-title">Your player portrait</h2></div><button className="km-button-secondary" type="button" onClick={() => setIsCardOpen(false)} aria-label="Close card preview"><X size={18} /></button></div>
+            <p className="km-muted m-0">Your map, strongest interests, recent words, and match record in one card.</p>
+            <img className="km-identity-preview" src={cardPreview} alt={`${session?.user?.name ?? "Your"} KnowMore player portrait with anchor graph and game stats`} />
+            <div className="km-identity-actions"><button className="km-button-gold" type="button" onClick={shareIdentity}><Share2 size={16} /> Share image</button><button className="km-button-secondary" type="button" onClick={() => { void downloadIdentity().catch(() => setShareStatus("Could not download the card")); }}><Download size={16} /> Download PNG</button></div>
+            <p className="km-share-status" aria-live="polite">{shareStatus}</p>
+          </section>
+        </div>}
       </div>
     </ProtectedRoute>
   );
