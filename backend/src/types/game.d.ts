@@ -7,15 +7,20 @@ export type Player = {
   livesRemaining: number;
 };
 export interface PostgameState {
-  phase: "COLLECTING" | "REVEALED";
+  phase: "SYNC_COLLECTING" | "READ_COLLECTING" | "REVEALED";
   deadline: number;
   lastWord: string | null;
   participants: { clientId: string; username: string }[];
-  submittedIds: string[];
-  reveals?: { clientId: string; username: string; word: string; guess: string; targetId: string; readMe: boolean }[];
-  syncs?: { firstId: string; secondId: string; related: boolean; exact: boolean }[];
+  syncSubmittedIds: string[];
+  readSubmittedIds: string[];
+  syncReveals?: { clientId: string; username: string; word: string }[];
+  readReveals?: { clientId: string; username: string; targetId: string; guess: string; actual: string | null; correct: boolean }[];
+  syncs?: { firstId: string; secondId: string; result: "SYNCED" | "CLOSE" | "NONE"; similarity: number }[];
+  bonusScores?: Record<string, number>;
+  topicChoices?: string[];
+  readableIds?: string[];
   radars?: { clientId: string; anchors: { subject: string; score: number }[] }[];
-  icebreaker?: string;
+  icebreakers?: string[];
 }
 export interface GameState {
   roomId: string;
@@ -30,5 +35,6 @@ export interface GameState {
   turnExpiresAt?: number;
   winner?: string;
   postgame?: PostgameState;
+  playerRadars?: { clientId: string; anchors: { subject: string; score: number }[] }[];
   dailyDate?: string;
 }
