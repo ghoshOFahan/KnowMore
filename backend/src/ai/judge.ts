@@ -11,7 +11,7 @@ export async function judgeWords(lastWord: string, newWord: string) {
 
   const response = await ai.models.generateContent({
     model: "gemini-3.5-flash-lite",
-    contents: `Judge a creative English word-chain move. Is "${next}" meaningfully connected to "${previous}"? Accept a clear common link such as a shared topic, part and whole, cause and effect, common association, or a familiar metaphor. Reject vague explanations that could connect almost any two words. Star to galaxy is connected; star to bread is not; pressure to diamond is connected. Return only a JSON object with a boolean field named related.`,
+    contents: `You are the strict referee of a word-chain game. Decide whether the ordinary meanings of "${previous}" and "${next}" have a direct, widely recognizable connection. Accept a part/whole relationship, a direct physical or causal relationship, or a strongly established association. A broad shared category alone is insufficient unless one word clearly contains or names the other. Reject connections that require inventing a third word, a person's name, a film or TV title, a pun, an obscure fact, or a story about why the player chose the word. When uncertain, reject the move. Examples: star → galaxy: yes (galaxies contain stars); pressure → diamond: yes (pressure helps form diamonds); ocean → depth: yes; bean → show: no (Mr. Bean is an extra named reference); show → bean: no; star → bread: no. Return only a JSON object with a boolean field named related.`,
     config: { responseMimeType: "application/json", temperature: 0 },
   });
 
