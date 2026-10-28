@@ -1,5 +1,13 @@
 import type { GameState } from "./game.js";
 
+export interface RoomMessage {
+  id: string;
+  playerId: string;
+  playerName: string;
+  text: string;
+  sentAt: number;
+}
+
 export interface ServerToClientEvents {
   gameStateUpdate: (game: GameState) => void;
   gameError: (error: string) => void;
@@ -16,6 +24,8 @@ export interface ServerToClientEvents {
     isEliminated: boolean;
     reason: string;
   }) => void;
+  chatHistory: (messages: RoomMessage[]) => void;
+  chatMessage: (message: RoomMessage) => void;
 }
 
 export interface ClientToServerEvents {
@@ -29,6 +39,7 @@ export interface ClientToServerEvents {
   reconnectRoom: (oldsocketid) => void;
   submitWord: ({ roomId, word }) => void;
   leaveRoom: ({ roomId, clientId }) => void;
+  sendChatMessage: (data: { roomId: string; text: string }) => void;
 }
 
 export interface InterServerEvents {
