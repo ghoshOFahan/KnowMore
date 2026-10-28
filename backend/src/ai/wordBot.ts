@@ -9,7 +9,7 @@ export async function chooseBotWord(lastWord: string, usedWords: string[]) {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model,
-    contents: `You are playing a semantic word-chain game. Give five distinct, common English single words that are strongly related to "${lastWord}". Do not use these already-played words: ${usedWords.join(", ") || "none"}. Return only the five words, one per line, with no numbering or explanation.`,
+    contents: `You are playing a strict word-chain game. Give five distinct, common English single words with a direct, widely recognizable connection to the ordinary meaning of "${lastWord}". Favor part/whole, direct physical or causal relationships, or strong everyday associations. Avoid puns, celebrity or character names, film and TV references, and vague shared themes. Do not use these already-played words: ${usedWords.join(", ") || "none"}. Return only the five words, one per line, with no numbering or explanation.`,
   });
 
   const candidates = (response.text ?? "")
