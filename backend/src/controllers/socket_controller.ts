@@ -1,4 +1,5 @@
 import { Server } from "socket.io";
+import { randomUUID } from "node:crypto";
 import { Redis } from "ioredis";
 import { Queue } from "bullmq";
 import { generateRoomId, getNextActivePlayerId } from "./Room_controller.js";
@@ -28,6 +29,7 @@ import type {
   ClientToServerEvents,
   InterServerEvents,
   SocketData,
+  RoomMessage,
 } from "../types/socket.js";
 
 const redis = new Redis(process.env.REDIS_URL!);
@@ -36,6 +38,13 @@ const turnTimeouts: Map<string, NodeJS.Timeout> = new Map();
 const processingRooms = new Set<string>();
 const botRooms = new Set<string>();
 const TURN_DURATION_MS = 30_000;
+const CHAT_KEY = (roomId: string) => `gameChat:${roomId}`;
+const lastChatAt = new Map<string, number>();
+
+async function sendChatHistory(socket: { emit: (event: "chatHistory", messages: RoomMessage[]) => void }, roomId: string) {
+  const entries = await redis.lrange(CHAT_KEY(roomId), -50, -1);
+  socket.emit("chatHistory", entries.map((entry) => JSON.parse(entry) as RoomMessage));
+}
 
 async function getDbUserId(socket: any): Promise<string | null> {
   try {
@@ -268,7 +277,9 @@ async function runBotTurn(io: Server, analyticsQueue: Queue, roomId: string) {
       return;
     }
 
-    await pushWord(redis, roomId, botWord, bot.clientId);
+  const previousScores = gameState.wordScores ?? Array(gameState.wordHistory.length).fill(null);
+  await pushWord(redis, roomId, botWord, bot.clientId);
+  gameState.wordScores = [...previousScores, score];
     gameState.currentPlayerId = getNextActivePlayerId(gameState.players, bot.id);
     await setGame(redis, roomId, gameState);
     io.to(roomId).emit("aiRuled", {
@@ -350,6 +361,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       await setSocketRoom(redis, socket.id, roomId);
       socket.join(roomId);
       socket.emit("gameStateUpdate", newGame);
+      await sendChatHistory(socket, roomId);
       if (mode === "ai") await startTurnTimer(io, analyticsQueue, roomId);
     });
 
@@ -382,6 +394,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       await setSocketRoom(redis, socket.id, roomId);
       socket.join(roomId);
       io.to(roomId).emit("gameStateUpdate", gameState);
+      await sendChatHistory(socket, roomId);
       if (gameState.status === "INGAME") await startTurnTimer(io, analyticsQueue, roomId);
     });
 
@@ -426,7 +439,9 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
           return;
         }
 
+        const previousScores = gameState.wordScores ?? Array(gameState.wordHistory.length).fill(null);
         await pushWord(redis, roomId, submittedWord, player.clientId);
+        gameState.wordScores = [...previousScores, lastWord ? ruling.score : null];
         gameState.currentPlayerId = getNextActivePlayerId(gameState.players, socket.id);
         await setGame(redis, roomId, gameState);
         io.to(roomId).emit("aiRuled", {
@@ -486,6 +501,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
 
         socket.join(roomId);
         socket.emit("gameStateUpdate", gameState);
+        await sendChatHistory(socket, roomId);
         io.to(roomId).emit("gameStateUpdate", gameState);
         if (gameState.status === "INGAME" && !turnTimeouts.has(roomId) && !processingRooms.has(roomId)) {
           const currentPlayer = gameState.players.find((item) => item.id === gameState.currentPlayerId);
@@ -561,7 +577,25 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       } catch (error) {}
     });
 
+    socket.on("sendChatMessage", async ({ roomId, text }) => {
+      if (typeof roomId !== "string" || typeof text !== "string") return;
+      const cleanText = text.trim().replace(/\s+/g, " ");
+      if (!cleanText || cleanText.length > 240) return socket.emit("gameError", "Messages must be 1 to 240 characters.");
+      if (Date.now() - (lastChatAt.get(socket.id) ?? 0) < 1000) return;
+      const gameState = await getGame(redis, roomId);
+      const player = gameState?.players.find((item) => item.id === socket.id && item.clientId === socket.data.userId && !item.isBot);
+      if (!player || gameState?.status !== "INGAME") return;
+      const message: RoomMessage = { id: randomUUID(), playerId: player.clientId, playerName: player.username, text: cleanText, sentAt: Date.now() };
+      lastChatAt.set(socket.id, message.sentAt);
+      const key = CHAT_KEY(roomId);
+      await redis.rpush(key, JSON.stringify(message));
+      await redis.ltrim(key, -50, -1);
+      await redis.expire(key, 86400);
+      io.to(roomId).emit("chatMessage", message);
+    });
+
     socket.on("disconnect", async () => {
+      lastChatAt.delete(socket.id);
       try {
         const GRACE_PERIOD = 45000;
         const roomId = await getSocketRoom(socket.id, redis);

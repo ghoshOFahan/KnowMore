@@ -14,6 +14,7 @@ export interface GameState {
   currentPlayerId: string;
   isAiThinking: boolean;
   wordHistory: string[];
+  wordScores?: (number | null)[];
   wordAuthors?: string[];
   turnExpiresAt?: number;
   winner?: string;

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Share2, Play } from "lucide-react";
 import ProtectedRoute from "../auth/ProtectedRoute";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
+import { createIdentityCard, identityCardPng } from "../lib/shareIdentityCard";
 
 const { useSession } = authClient;
 const MOCK_RADAR = [
@@ -50,30 +51,25 @@ export default function Dashboard() {
 
   const shareIdentity = async () => {
     const name = session?.user?.name ?? "A KnowMore player";
-    const interests = insights?.interests?.slice(0, 3).map((item) => item.subject);
-    const profile = [
-      `${name}'s KnowMore identity`,
-      interests?.length ? `Mind drawn to: ${interests.join(", ")}.` : "Building a semantic fingerprint through word-chain games.",
-      `${stats?.totalGames ?? 0} matches played${stats ? `, ${stats.winRate}% win rate` : ""}.`,
-      `${window.location.origin}/`,
-    ].join("\n");
-
     try {
-      if (navigator.share) {
-        await navigator.share({ title: `${name}'s KnowMore identity`, text: profile });
-        setShareStatus("Identity shared");
-      } else {
-        await navigator.clipboard.writeText(profile);
-        setShareStatus("Identity copied");
+      const svg = createIdentityCard(name, radarData, stats?.totalGames ?? 0, stats?.winRate ?? 0, insights?.totalWords ?? 0);
+      const png = await identityCardPng(svg);
+      const file = new File([png], "knowmore-identity.png", { type: "image/png" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: `${name}'s KnowMore identity`, files: [file] });
+        setShareStatus("Identity card shared");
+        return;
       }
+      const url = URL.createObjectURL(png);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "knowmore-identity.png";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setShareStatus("Identity card downloaded");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return;
-      try {
-        await navigator.clipboard.writeText(profile);
-        setShareStatus("Identity copied");
-      } catch {
-        setShareStatus("Could not share right now");
-      }
+      setShareStatus("Could not create the identity card");
     }
     window.setTimeout(() => setShareStatus(""), 3000);
   };
@@ -114,7 +110,7 @@ export default function Dashboard() {
                   <div className="km-stat"><small>Matches</small><strong>{stats?.totalGames ?? "—"}</strong></div>
                   <div className="km-stat"><small>Win rate</small><strong>{stats ? `${stats.winRate}%` : "—"}</strong></div>
                 </div>
-                <button className="km-button-secondary w-full" type="button" onClick={shareIdentity} aria-label="Share your KnowMore identity"><Share2 size={15} /> Share identity</button>
+                <button className="km-button-secondary w-full" type="button" onClick={shareIdentity} aria-label="Share your KnowMore identity card"><Share2 size={15} /> Share identity card</button>
                 <p className="km-share-status" aria-live="polite">{shareStatus}</p>
               </section>
 
