@@ -2,14 +2,17 @@
 import * as React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, AlertCircle, Sparkles, Trophy, X, MessageCircle } from "lucide-react";
+import { Send, AlertCircle, Sparkles, Trophy, X, MessageCircle, Volume2, VolumeX, Music2 } from "lucide-react";
 import { authClient } from "../../auth/authClient";
 import { useSocket } from "../../hooks/useSocket";
 import { useRouter } from "next/navigation";
 import ProtectedRoute from "../../auth/ProtectedRoute";
 import Navbar from "../../components/Navbar";
+import PostgamePanel from "../../components/PostgamePanel";
+import MatchReplay from "../../components/MatchReplay";
 import type { GameState } from "../../types/game";
 import type { RoomMessage } from "../../types/socket";
+import { playLanding, playSnap, replayTrailMelody, unlockTrailAudio } from "../../lib/trailAudio";
 
 const { useSession } = authClient;
 const TURN_DURATION_SECONDS = 30;
@@ -36,12 +39,16 @@ export default function GameArena({ params }: GameArenaProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const lastWordCountRef = useRef<number | null>(null);
+  const leaveHoldRef = useRef<number | null>(null);
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [input, setInput] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<RoomMessage[]>([]);
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
+  const [holdingLeave, setHoldingLeave] = useState(false);
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [localError, setLocalError] = useState<string | null>(null);
@@ -52,6 +59,7 @@ export default function GameArena({ params }: GameArenaProps) {
     reason: string;
     score: number;
   } | null>(null);
+  const [fallingWord, setFallingWord] = useState<string | null>(null);
   const [gameOver, setGameOver] = useState<{
     winner: string;
     commentary: string;
@@ -59,8 +67,18 @@ export default function GameArena({ params }: GameArenaProps) {
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(interval);
+    setSoundOn(window.localStorage.getItem("knowmore-sound") !== "off");
+    return () => { window.clearInterval(interval); if (leaveHoldRef.current !== null) window.clearTimeout(leaveHoldRef.current); };
   }, []);
+
+  useEffect(() => {
+    const count = gameState?.wordHistory?.length;
+    if (count === undefined) return;
+    if (lastWordCountRef.current !== null && count > lastWordCountRef.current && soundOn) {
+      playLanding(gameState?.wordScores?.[count - 1] ?? 0.5);
+    }
+    lastWordCountRef.current = count;
+  }, [gameState?.wordHistory?.length, gameState?.wordScores, soundOn]);
 
   // Auto-scroll to bottom on new words
   useEffect(() => {
@@ -84,6 +102,7 @@ export default function GameArena({ params }: GameArenaProps) {
     const handleGameState = (state: GameState) => {
       setGameState({ ...state, wordHistory: state.wordHistory ?? [], wordAuthors: state.wordAuthors ?? [] });
       setIsMyTurn(state.currentPlayerId === socket.id);
+      if (state.status === "FINISHED") setGameOver((current) => current || { winner: state.winner ?? "No One", commentary: "Your trail is complete." });
     };
 
     const handleAiThinking = ({
@@ -105,6 +124,9 @@ export default function GameArena({ params }: GameArenaProps) {
       score: number;
     }) => {
       if (!data.isValid && data.newWord !== "no word") {
+        if (soundOn) playSnap();
+        setFallingWord(/^[a-z]+$/i.test(data.newWord) ? data.newWord : "link snapped");
+        setTimeout(() => setFallingWord(null), 1200);
         setLastRuling({
           word: data.newWord,
           isValid: false,
@@ -155,7 +177,7 @@ export default function GameArena({ params }: GameArenaProps) {
       socket.off("chatHistory", handleChatHistory);
       socket.off("chatMessage", handleChatMessage);
     };
-  }, [socket]);
+  }, [socket, soundOn]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -176,15 +198,26 @@ export default function GameArena({ params }: GameArenaProps) {
       }
 
       socket.emit("submitWord", { roomId, word });
+      if (soundOn) unlockTrailAudio();
       setInput("");
     },
-    [input, isMyTurn, isAiThinking, roomId, socket],
+    [input, isMyTurn, isAiThinking, roomId, socket, soundOn],
   );
 
   const handleLeave = () => {
     if (!session?.user?.id) return;
     socket.emit("leaveRoom", { roomId, clientId: session.user.id });
     router.push("/dashboard");
+  };
+  const cancelLeaveHold = () => {
+    if (leaveHoldRef.current !== null) window.clearTimeout(leaveHoldRef.current);
+    leaveHoldRef.current = null;
+    setHoldingLeave(false);
+  };
+  const startLeaveHold = () => {
+    cancelLeaveHold();
+    setHoldingLeave(true);
+    leaveHoldRef.current = window.setTimeout(() => { leaveHoldRef.current = null; setHoldingLeave(false); handleLeave(); }, 900);
   };
 
   const wordHistory: WordEntry[] = (gameState?.wordHistory ?? []).map((word, index) => {
@@ -208,10 +241,8 @@ export default function GameArena({ params }: GameArenaProps) {
         <main className="km-content" style={{ paddingTop: 4 }}>
           <div className="km-game-top">
             <div><small className="km-muted block">{gameState?.players.some((player) => player.isBot) ? "AI match" : "Room"}</small><b>{roomId}</b></div>
-            <div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isAiThinking ? (gameState.players.find((player) => player.id === gameState.currentPlayerId)?.isBot ? "The Thinker is choosing" : "Checking your connection") : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting"}{turnSecondsLeft !== null && <b className="km-turn-clock">{turnSecondsLeft}s</b>}</div>
+            <div className="km-game-top-actions"><div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isAiThinking ? (gameState.players.find((player) => player.id === gameState.currentPlayerId)?.isBot ? "The Thinker is choosing" : "Checking your connection") : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting"}{turnSecondsLeft !== null && <b className="km-turn-clock">{turnSecondsLeft}s</b>}</div><button className="km-sound-toggle" type="button" onClick={() => { const next = !soundOn; setSoundOn(next); window.localStorage.setItem("knowmore-sound", next ? "on" : "off"); if (next) unlockTrailAudio(); }} aria-label={soundOn ? "Mute game sounds" : "Enable game sounds"}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button></div>
           </div>
-          {gameState?.status === "INGAME" && <div className="km-game-progress" role="progressbar" aria-label="Time left in this turn" aria-valuenow={turnSecondsLeft ?? TURN_DURATION_SECONDS} aria-valuemin={0} aria-valuemax={TURN_DURATION_SECONDS}><motion.div initial={false} animate={{ width: `${turnProgress}%` }} /></div>}
-
           {gameState?.status === "LOBBY" ? (
             <section className="km-room km-card text-center">
               <p className="km-kicker">Multiplayer</p>
@@ -229,6 +260,7 @@ export default function GameArena({ params }: GameArenaProps) {
           <div className="km-game-layout">
             <section className="km-game-board" aria-label="Word trail">
               <div className="km-trail-heading"><div><p className="km-kicker m-0">The word trail</p><h1>{lastWord ? "Keep the connection alive" : "Start with any word"}</h1></div><span className="km-trail-count">{wordHistory.length} {wordHistory.length === 1 ? "word" : "words"}</span></div>
+              {gameState?.status === "INGAME" && <div className={`km-burning-rope ${turnSecondsLeft === null ? "paused" : ""}`} role="progressbar" aria-label="Rope remaining this turn" aria-valuenow={turnSecondsLeft ?? TURN_DURATION_SECONDS} aria-valuemin={0} aria-valuemax={TURN_DURATION_SECONDS}><span style={{ width: `${turnProgress}%` }} /><i style={{ left: `${turnProgress}%` }} /></div>}
               <div ref={scrollRef} className="km-word-list">
                 {wordHistory.length === 0 && (
                   <div className="km-trail-empty"><Sparkles size={22} /><b>{gameState?.status === "INGAME" ? (isMyTurn ? "Your first word sets the direction." : "The trail is ready.") : "Reconnecting to your match…"}</b><span>{isMyTurn ? "Choose a word that feels like a beginning." : "The opening word will appear here."}</span></div>
@@ -239,6 +271,7 @@ export default function GameArena({ params }: GameArenaProps) {
                   </motion.div>
                 ))}
                 <AnimatePresence>
+                  {fallingWord && <motion.div key={fallingWord} initial={{ opacity: 1, y: 0, rotate: 0 }} animate={{ opacity: 0, y: 85, rotate: 15 }} transition={{ duration: 1.1 }} className="km-falling-word">{fallingWord}</motion.div>}
                   {isBusy && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="km-thinking"><Sparkles size={15} />{gameState?.players.find((player) => player.id === gameState.currentPlayerId)?.isBot ? "The Thinker is finding a connection" : "Checking the connection"}</motion.div>}
                 </AnimatePresence>
               </div>
@@ -274,7 +307,7 @@ export default function GameArena({ params }: GameArenaProps) {
                   <button type="submit" className="km-button-secondary" disabled={!chatInput.trim()} aria-label="Send message"><Send size={16} /></button>
                 </form>
               </section>}
-              <button onClick={handleLeave} className="km-button-secondary mt-5">Leave match <X size={15} /></button>
+              <button type="button" onPointerDown={startLeaveHold} onPointerUp={cancelLeaveHold} onPointerLeave={cancelLeaveHold} onPointerCancel={cancelLeaveHold} onClick={(event) => { if (event.detail === 0) handleLeave(); }} className={`km-button-secondary km-hold-leave mt-5 ${holdingLeave ? "armed" : ""}`} aria-label="Hold to leave match"><span>Hold to leave</span><X size={15} /></button>
             </aside>
           </div>
           )}
@@ -309,6 +342,9 @@ export default function GameArena({ params }: GameArenaProps) {
                     "{gameOver.commentary}"
                   </p>
                 )}
+                {!!gameState?.wordHistory?.length && <MatchReplay words={gameState.wordHistory} names={gameState.wordHistory.map((_, index) => gameState.players.find((player) => player.clientId === gameState.wordAuthors?.[index])?.username ?? "Player")} scores={gameState.wordScores ?? []} />}
+                {gameState?.postgame && <PostgamePanel roomId={roomId} postgame={gameState.postgame} userId={session?.user?.id} now={now} socket={socket} />}
+                {!!gameState?.wordScores?.length && <button className="km-button-secondary mb-3" type="button" title="Notes follow each accepted link's strength" onClick={() => replayTrailMelody(gameState.wordScores ?? [])}><Music2 size={17} /> Replay trail melody</button>}
                 <button
                   onClick={() => router.push("/dashboard")}
                   className="km-button-gold w-full"

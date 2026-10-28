@@ -6,6 +6,17 @@ export type Player = {
   isBot?: boolean;
   livesRemaining: number;
 };
+export interface PostgameState {
+  phase: "COLLECTING" | "REVEALED";
+  deadline: number;
+  lastWord: string | null;
+  participants: { clientId: string; username: string }[];
+  submittedIds: string[];
+  reveals?: { clientId: string; username: string; word: string; guess: string; targetId: string; readMe: boolean }[];
+  syncs?: { firstId: string; secondId: string; related: boolean; exact: boolean }[];
+  radars?: { clientId: string; anchors: { subject: string; score: number }[] }[];
+  icebreaker?: string;
+}
 export interface GameState {
   roomId: string;
   players: Player[];
@@ -18,4 +29,6 @@ export interface GameState {
   wordAuthors?: string[];
   turnExpiresAt?: number;
   winner?: string;
+  postgame?: PostgameState;
+  dailyDate?: string;
 }
