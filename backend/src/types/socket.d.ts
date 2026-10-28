@@ -33,13 +33,14 @@ export interface ClientToServerEvents {
     username: string;
     maxPlayers?: number;
     clientId: string;
-    mode?: "ai" | "multiplayer";
+    mode?: "ai" | "multiplayer" | "daily";
   }) => void;
   joinRoom: ({ username, roomId, clientId }) => void;
   reconnectRoom: (oldsocketid) => void;
   submitWord: ({ roomId, word }) => void;
   leaveRoom: ({ roomId, clientId }) => void;
   sendChatMessage: (data: { roomId: string; text: string }) => void;
+  submitPostgame: (data: { roomId: string; word: string; guess: string; targetId: string }) => void;
 }
 
 export interface InterServerEvents {

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getDailyOverview } from "../controllers/socket_controller.js";
 import { insertData } from "../controllers/onboarding_controller.js";
 import {
   getProfileRadar,
@@ -21,6 +22,10 @@ router.post("/onboarding", requireAuth, insertData);
 router.get("/profile/radar", requireAuth, getProfileRadar);
 router.get("/profile/stats", requireAuth, getProfileStats);
 router.get("/profile/insights", requireAuth, getProfileInsights);
+router.get("/daily", requireAuth, async (_req, res) => {
+  try { res.json(await getDailyOverview()); }
+  catch (error) { console.error("Could not load daily map:", error); res.status(500).json({ error: "Daily map unavailable" }); }
+});
 router.get("/onboarding/status", requireAuth, async (req, res) => {
   const userId = req.user?.id;
   const existing = await db

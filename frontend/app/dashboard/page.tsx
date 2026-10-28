@@ -4,10 +4,11 @@ import Navbar from "../components/Navbar";
 import GameModeModal from "../components/GameModeModal";
 import { authClient } from "../auth/authClient";
 import { useEffect, useMemo, useState } from "react";
-import { Share2, Play, Download, X } from "lucide-react";
+import { Share2, Download, X } from "lucide-react";
 import ProtectedRoute from "../auth/ProtectedRoute";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 import { createIdentityCard, identityCardPng } from "../lib/shareIdentityCard";
+import FingerprintEmblem from "../components/FingerprintEmblem";
 
 const { useSession } = authClient;
 const MOCK_RADAR = [
@@ -29,6 +30,7 @@ interface MindInsights {
   headline: string;
   detail: string;
 }
+interface DailyOverview { date: string; starter: string; players: number; links: { from: string; to: string; count: number }[]; }
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -44,11 +46,26 @@ function timeAgo(dateStr: string): string {
 export default function Dashboard() {
   const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"ai" | "multiplayer" | "join" | "daily" | null>(null);
   const [radarData, setRadarData] = useState(MOCK_RADAR);
   const [stats, setStats] = useState<Stats | null>(null);
   const [insights, setInsights] = useState<MindInsights | null>(null);
+  const [daily, setDaily] = useState<DailyOverview | null>(null);
+  const [dailyShareStatus, setDailyShareStatus] = useState("");
   const [shareStatus, setShareStatus] = useState("");
   const [isCardOpen, setIsCardOpen] = useState(false);
+  const openMode = (mode: "ai" | "multiplayer" | "join" | "daily") => { setModalMode(mode); setIsModalOpen(true); };
+  const shareDaily = async () => {
+    if (!daily) return;
+    const paths = daily.links.slice(0, 3).map((link) => `${link.from} → ${link.to}`).join(" · ");
+    const text = `KnowMore daily chain ${daily.date}\nStart: ${daily.starter}\n${daily.players} players explored today${paths ? `\nPopular paths: ${paths}` : ""}\nhttps://knowmore.ahanghosh.me/`;
+    try {
+      if (navigator.share) await navigator.share({ title: "Today's KnowMore chain", text });
+      else { await navigator.clipboard.writeText(text); setDailyShareStatus("Today's chain copied"); }
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "AbortError")) setDailyShareStatus("Could not share today's chain");
+    }
+  };
 
   const cardSvg = useMemo(() => createIdentityCard({
     name: session?.user?.name ?? "KnowMore player",
@@ -104,6 +121,10 @@ export default function Dashboard() {
       .then((res) => res.json())
       .then((data) => setInsights(data))
       .catch(() => {});
+    fetch("/api/daily", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => { if (data.starter) setDaily(data); })
+      .catch(() => {});
   }, [session]);
 
   return (
@@ -116,15 +137,16 @@ export default function Dashboard() {
             <aside className="km-dashboard-stack">
               <section className="km-card">
                 <div className="flex items-center gap-4">
-                  <div className="km-avatar">{session?.user?.name?.[0]?.toUpperCase() ?? "P"}</div>
+                  <FingerprintEmblem anchors={radarData} label="Your fingerprint emblem" />
                   <div>
                     <strong className="block text-xl">{session?.user?.name ?? "Player"}</strong>
-                    <p className="km-muted m-0">The Architect</p>
+                    <p className="km-muted m-0">Your word trail identity</p>
                   </div>
                 </div>
                 <div className="km-stats">
                   <div className="km-stat"><small>Matches</small><strong>{stats?.totalGames ?? "—"}</strong></div>
                   <div className="km-stat"><small>Win rate</small><strong>{stats ? `${stats.winRate}%` : "—"}</strong></div>
+                  <div className="km-stat km-last-five"><small>Last 5</small><div className="km-form-strip" aria-label="Results of your last five matches">{stats?.recentGames?.length ? stats.recentGames.slice(0, 5).map((game, index) => <span key={`${game.roomId}-${index}`} className={game.won ? "won" : "lost"} title={game.won ? "Won" : "Lost"}>{game.won ? "W" : "L"}</span>) : <b>—</b>}</div></div>
                 </div>
                 <button className="km-button-secondary w-full" type="button" onClick={() => setIsCardOpen(true)} aria-label="Preview your KnowMore identity card"><Share2 size={15} /> View identity card</button>
               </section>
@@ -133,7 +155,7 @@ export default function Dashboard() {
                 <h2 className="text-2xl m-0 mb-2">Recent games</h2>
                 {!stats || !stats.recentGames?.length ? (
                   <p className="km-muted">No games played yet. Enter the arena to start a trail.</p>
-                ) : stats.recentGames.map((game, index) => (
+                ) : stats.recentGames.slice(0, 5).map((game, index) => (
                   <div className="km-recent-row" key={`${game.roomId}-${index}`}>
                     <div><b>Room {game.roomId}</b><small className="km-muted block">{game.wordsContributed} words · {timeAgo(game.playedAt)}</small></div>
                     <b style={{ color: game.won ? "var(--color-green)" : "var(--color-red)" }}>{game.won ? "Won" : "Lost"}</b>
@@ -143,70 +165,52 @@ export default function Dashboard() {
             </aside>
 
             <div className="km-dashboard-stack">
-              <button className="km-arena-card" onClick={() => setIsModalOpen(true)}>
-                <span><b>Enter the arena</b><span>Challenge the bot or a friend. Evolve your profile.</span></span>
-                <Play size={38} fill="currentColor" />
-              </button>
-
-              <section className="km-radar">
-                <h2 className="m-0 text-3xl">Your anchor map</h2>
-                <p className="km-muted mt-1">How your own accepted words connect with your map topics.</p>
-                <div className="w-full min-h-[330px] flex justify-center items-center">
-                  <ResponsiveContainer width="100%" height={360}><RadarChart data={radarData} outerRadius="72%" margin={{ top: 20, left: 32, right: 32, bottom: 20 }}>
-                    <PolarGrid stroke="var(--color-line)" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: "var(--color-fg)", fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 16 }} />
-                    <PolarRadiusAxis tick={false} axisLine={false} />
-                    <Radar name={session?.user?.name} dataKey="score" stroke="var(--color-purple)" fill="var(--color-purple)" fillOpacity={0.28} />
-                  </RadarChart></ResponsiveContainer>
+              <section className="km-arena-card">
+                <h2>Enter the arena</h2>
+                <p>Challenge the bot or a friend. Evolve your profile.</p>
+                <div className="km-arena-actions">
+                  <button type="button" onClick={() => openMode("ai")}>Play the bot</button>
+                  <button type="button" onClick={() => openMode("multiplayer")}>Create room</button>
+                  <button type="button" onClick={() => openMode("join")}>Join room</button>
+                  <button type="button" onClick={() => openMode("daily")}>Daily chain</button>
                 </div>
               </section>
 
-              <section className="km-interest-map">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="km-kicker m-0">Built from your games</p>
-                    <h2 className="m-0 mt-1 text-3xl">Where your mind goes</h2>
+              <section className="km-daily-panel">
+                <div><p className="km-kicker m-0">One word, many paths</p><h2>Today&apos;s chain</h2><p>Everyone begins with <b>{daily?.starter ?? "today's word"}</b>. See where their next links went.</p></div>
+                <div className="km-daily-links">{daily?.links?.length ? daily.links.slice(0, 8).map((link, index) => <div key={`${link.from}-${link.to}-${index}`}><span>{link.from} <b>→</b> {link.to}</span><small>{link.count} {link.count === 1 ? "trail" : "trails"}</small></div>) : <p className="km-muted">The shared map is waiting for its first paths.</p>}</div>
+                <small className="km-muted">{daily?.players ?? 0} players today · shared starting word changes at 00:00 UTC</small>
+                <button className="km-button-secondary" type="button" onClick={() => { void shareDaily(); }} disabled={!daily}><Share2 size={15} /> Share today&apos;s map</button>
+                {dailyShareStatus && <small role="status">{dailyShareStatus}</small>}
+              </section>
+
+              <section className="km-fingerprint-panel">
+                <div className="km-fingerprint-head"><h2>Your fingerprint</h2><span>Based on {insights?.analyzedGames ?? 0} analyzed games</span></div>
+                <div className="km-fingerprint-layout">
+                  <div className="km-fingerprint-chart">
+                    <ResponsiveContainer width="100%" height={300}><RadarChart data={radarData} outerRadius="67%" margin={{ top: 24, left: 28, right: 28, bottom: 18 }}>
+                      <PolarGrid stroke="var(--color-line)" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: "var(--color-fg)", fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 14 }} />
+                      <PolarRadiusAxis tick={false} axisLine={false} />
+                      <Radar name={session?.user?.name} dataKey="score" stroke="var(--color-purple)" fill="var(--color-purple)" fillOpacity={0.32} />
+                    </RadarChart></ResponsiveContainer>
                   </div>
-                  <span className="km-interest-count">{insights?.analyzedGames ?? 0} analyzed</span>
+                  <div className="km-interest-bars">
+                    {insights?.interests?.length ? insights.interests.slice(0, 5).map((interest) => <div className="km-interest-row" key={interest.subject}>
+                      <div className="flex justify-between gap-3 text-sm"><b>{interest.subject}</b><span>{interest.score}%</span></div>
+                      <div className="km-interest-track"><span style={{ width: `${interest.score}%` }} /></div>
+                    </div>) : <p className="km-muted">Play a few matches to reveal the topics your words return to.</p>}
+                  </div>
                 </div>
-                <p className="km-muted mt-2 mb-5">
-                  {insights?.detail ?? "Your own accepted words reveal which topics keep drawing you in."}
-                </p>
-                {insights?.interests?.length ? (
-                  <div className="km-interest-layout">
-                    <div className="km-interest-bars">
-                      {insights.interests.slice(0, 5).map((interest) => (
-                        <div className="km-interest-row" key={interest.subject}>
-                          <div className="flex justify-between gap-3 text-sm"><b>{interest.subject}</b><span className="km-muted">{interest.score}%</span></div>
-                          <div className="km-interest-track"><span style={{ width: `${interest.score}%` }} /></div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="km-interest-next">
-                      <small className="km-muted">A new direction to explore</small>
-                      <strong>{insights.nextToExplore ?? "Play to discover"}</strong>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="km-interest-empty">
-                    <span className="km-interest-orbit" aria-hidden="true">✳</span>
-                    <b>{insights?.headline ?? "Your interest map is taking shape"}</b>
-                    <span className="km-muted">Play matches to build a picture from your own word choices.</span>
-                  </div>
-                )}
-                {!!insights?.recentWords?.length && (
-                  <div className="km-word-evidence">
-                    <small className="km-muted">Recent words from your trails</small>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {insights.recentWords.slice(0, 8).map((word, index) => <span className="km-evidence-word" key={`${word}-${index}`}>{word}</span>)}
-                    </div>
-                  </div>
-                )}
+                <div className="km-fingerprint-foot">
+                  <div><small className="km-kicker">Least explored</small><strong>{insights?.nextToExplore ?? "Still discovering"}</strong></div>
+                  <div><small className="km-kicker">Recent words from your trails</small><div className="km-fingerprint-words">{insights?.recentWords?.length ? insights.recentWords.slice(0, 8).map((word, index) => <span key={`${word}-${index}`}>{word}</span>) : <span>Your first words will appear here</span>}</div></div>
+                </div>
               </section>
             </div>
           </div>
         </main>
-        <GameModeModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <GameModeModal isOpen={isModalOpen} initialMode={modalMode} onClose={() => setIsModalOpen(false)} />
         {isCardOpen && <div className="km-modal-overlay" onClick={() => setIsCardOpen(false)}>
           <section className="km-identity-modal" role="dialog" aria-modal="true" aria-labelledby="identity-card-title" onClick={(event) => event.stopPropagation()}>
             <div className="km-identity-modal-head"><div><p className="km-kicker m-0">Ready to share</p><h2 id="identity-card-title">Your player portrait</h2></div><button className="km-button-secondary" type="button" onClick={() => setIsCardOpen(false)} aria-label="Close card preview"><X size={18} /></button></div>

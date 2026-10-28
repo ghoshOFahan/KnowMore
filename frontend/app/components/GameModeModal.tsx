@@ -9,8 +9,9 @@ import {
   Loader2,
   Minus,
   Plus,
+  CalendarDays,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../auth/authClient";
 import { getSocket } from "../hooks/useSocket";
@@ -21,18 +22,23 @@ const { useSession } = authClient;
 interface GameModeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialMode?: "ai" | "multiplayer" | "join" | "daily" | null;
 }
 
-export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
+export default function GameModeModal({ isOpen, onClose, initialMode = null }: GameModeModalProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [selectedMode, setSelectedMode] = useState<
-    "ai" | "multiplayer" | "join" | null
+    "ai" | "multiplayer" | "join" | "daily" | null
   >(null);
   const [joinRoomId, setJoinRoomId] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) setSelectedMode(initialMode);
+  }, [isOpen, initialMode]);
 
   const handleStart = () => {
     if (!selectedMode || !session?.user?.id) return;
@@ -86,11 +92,11 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
         roomId: joinRoomId.trim().toUpperCase(),
         clientId,
       });
-    } else if (selectedMode === "ai") {
+    } else if (selectedMode === "ai" || selectedMode === "daily") {
       socket.once("gameStateUpdate", (gameState: GameState) => {
         setIsLoading(false);
         onClose();
-        router.push(`/game/${gameState.roomId}?mode=ai`);
+        router.push(`/game/${gameState.roomId}?mode=${selectedMode}`);
       });
 
       socket.once("gameError", (err: string) => {
@@ -102,7 +108,7 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
         username,
         maxPlayers: 2,
         clientId,
-        mode: "ai",
+        mode: selectedMode,
       });
     }
   };
@@ -122,6 +128,13 @@ export default function GameModeModal({ isOpen, onClose }: GameModeModalProps) {
       title: "Train with AI",
       desc: "Play a live match against The Thinker. Every turn is judged by the same semantic engine.",
       icon: <Bot size={24} />,
+      color: "from-[var(--color-purple)] to-[var(--color-pink)]",
+    },
+    {
+      id: "daily",
+      title: "Daily chain",
+      desc: "Start from today's shared word and add your path to the community map.",
+      icon: <CalendarDays size={24} />,
       color: "from-[var(--color-purple)] to-[var(--color-pink)]",
     },
     {
