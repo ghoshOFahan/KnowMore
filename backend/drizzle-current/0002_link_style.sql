@@ -1,0 +1,2 @@
+ALTER TABLE "knowmore"."game_players" ADD COLUMN "accepted_links" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "knowmore"."game_players" ADD COLUMN "exploratory_links" integer DEFAULT 0 NOT NULL;

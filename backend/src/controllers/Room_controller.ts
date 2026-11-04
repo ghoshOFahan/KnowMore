@@ -1,9 +1,11 @@
+import { randomInt } from "node:crypto";
+
 export function generateRoomId(): string {
   const character = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let result = "";
-  for (var i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     result =
-      result + character.charAt(Math.floor(Math.random() * character.length));
+      result + character.charAt(randomInt(character.length));
   }
   return result;
 }

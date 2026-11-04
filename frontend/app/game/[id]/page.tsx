@@ -11,6 +11,8 @@ import Navbar from "../../components/Navbar";
 import PostgamePanel from "../../components/PostgamePanel";
 import MatchReplay from "../../components/MatchReplay";
 import FingerprintEmblem from "../../components/FingerprintEmblem";
+import CountUp from "../../components/CountUp";
+import DailyOriginality from "../../components/DailyOriginality";
 import type { GameState } from "../../types/game";
 import type { RoomMessage } from "../../types/socket";
 import { playLanding, playSnap, replayTrailMelody, unlockTrailAudio } from "../../lib/trailAudio";
@@ -50,6 +52,11 @@ export default function GameArena({ params }: GameArenaProps) {
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [holdingLeave, setHoldingLeave] = useState(false);
+  const [copiedRoom, setCopiedRoom] = useState(false);
+  const [safetyTarget, setSafetyTarget] = useState("");
+  const [reportCategory, setReportCategory] = useState("harassment");
+  const [reportDetails, setReportDetails] = useState("");
+  const [safetyStatus, setSafetyStatus] = useState("");
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [localError, setLocalError] = useState<string | null>(null);
@@ -184,7 +191,7 @@ export default function GameArena({ params }: GameArenaProps) {
     async (e: React.FormEvent) => {
       e.preventDefault();
       const word = input.trim().toLowerCase();
-      if (!word || !isMyTurn || isAiThinking) return;
+      if (!word || !isMyTurn || isAiThinking || gameState?.appeal) return;
 
       // Local validation first — spaces, sentences, non-letters
       if (/\s/.test(word)) {
@@ -202,13 +209,23 @@ export default function GameArena({ params }: GameArenaProps) {
       if (soundOn) unlockTrailAudio();
       setInput("");
     },
-    [input, isMyTurn, isAiThinking, roomId, socket, soundOn],
+    [input, isMyTurn, isAiThinking, roomId, socket, soundOn, gameState?.appeal],
   );
 
   const handleLeave = () => {
     if (!session?.user?.id) return;
     socket.emit("leaveRoom", { roomId, clientId: session.user.id });
     router.push("/dashboard");
+  };
+  const submitSafety = async (action: "report" | "block") => {
+    if (!safetyTarget) return;
+    setSafetyStatus("Saving…");
+    try {
+      const response = await fetch(`/api/safety/${action}`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, targetId: safetyTarget, category: reportCategory, details: reportDetails }) });
+      if (!response.ok) throw new Error();
+      if (action === "block") { handleLeave(); return; }
+      setSafetyStatus("Report received."); setReportDetails("");
+    } catch { setSafetyStatus("Could not save that request. Please try again."); }
   };
   const cancelLeaveHold = () => {
     if (leaveHoldRef.current !== null) window.clearTimeout(leaveHoldRef.current);
@@ -235,8 +252,7 @@ export default function GameArena({ params }: GameArenaProps) {
     const longLeaps = scoredLinks.filter((score) => score < 0.5).length;
     if (longLeaps >= 2) lines.push(`You leaped far ${longLeaps} times.`);
     if (scoredLinks.length && scoredLinks.filter((score) => score > 0.8).length > scoredLinks.length / 2) lines.push("You stayed close to the topic.");
-    const pointsByPlayer = new Map<string, number>();
-    (gameState?.wordAuthors ?? []).forEach((author) => { if (author && gameState?.players.some((player) => player.clientId === author)) pointsByPlayer.set(author, (pointsByPlayer.get(author) ?? 0) + 1); });
+    const pointsByPlayer = new Map<string, number>(Object.entries(gameState?.points ?? {}));
     Object.entries(gameState?.postgame?.bonusScores ?? {}).forEach(([id, points]) => pointsByPlayer.set(id, (pointsByPlayer.get(id) ?? 0) + points));
     const leader = [...pointsByPlayer.entries()].sort((a, b) => b[1] - a[1])[0];
     const runnerUp = [...pointsByPlayer.values()].sort((a, b) => b - a)[1] ?? 0;
@@ -266,12 +282,12 @@ export default function GameArena({ params }: GameArenaProps) {
               <p className="km-kicker">Multiplayer</p>
               <h1 className="m-0">Room ready</h1>
               <p className="km-muted">Share this code with your opponent.</p>
-              <div className="km-room-code">{roomId}</div>
+              <div className="km-room-code-boxes" aria-label={`Room code ${roomId}`}>{roomId.split("").map((letter, index) => <span aria-hidden="true" key={index}>{letter}</span>)}</div>
               <p className="km-muted"><span className="km-pulse" />Waiting for an opponent to join</p>
               <p className="km-muted">{gameState.players.length} / {gameState.maxPlayers} players joined</p>
-              <div className="km-lobby-player-list" aria-label="Players in this room">{gameState.players.map((player) => <div className="km-lobby-player" key={player.clientId}><FingerprintEmblem size={38} anchors={gameState.playerRadars?.find((radar) => radar.clientId === player.clientId)?.anchors ?? []} label={`${player.username}'s fingerprint`} /><span>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</span><span className="km-life-pips" aria-label={`${player.livesRemaining ?? 3} lives`}>{[0, 1, 2].map((life) => <i key={life} />)}</span></div>)}</div>
+              <div className="km-lobby-player-list" aria-label="Players in this room">{gameState.players.map((player) => <div className="km-lobby-player" key={player.clientId}><FingerprintEmblem size={38} anchors={gameState.playerRadars?.find((radar) => radar.clientId === player.clientId)?.anchors ?? []} label={`${player.username}'s fingerprint`} /><span>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</span><span className="km-life-pips" aria-label={`${player.livesRemaining ?? 3} lives`}>{[0, 1, 2].map((life) => <i key={life} />)}</span></div>)}{Array.from({ length: Math.max(0, gameState.maxPlayers - gameState.players.length) }, (_, index) => <div className="km-lobby-player km-waiting-dots" key={`waiting-${index}`}><span className="km-player-mark">?</span><span>Waiting for a player</span><span>● ● ●</span></div>)}</div>
               <div className="flex justify-center gap-3 mt-5">
-                <button className="km-button-gold" onClick={() => navigator.clipboard.writeText(roomId).catch(() => {})}>Copy room code</button>
+                <button className="km-button-gold" onClick={() => { void navigator.clipboard.writeText(roomId).then(() => { setCopiedRoom(true); window.setTimeout(() => setCopiedRoom(false), 2000); }).catch(() => setServerError("Could not copy the room code.")); }}>{copiedRoom ? "Copied!" : "Copy room code"}</button>
                 <button className="km-button-secondary" onClick={handleLeave}>Cancel</button>
               </div>
             </section>
@@ -279,7 +295,8 @@ export default function GameArena({ params }: GameArenaProps) {
           <div className="km-game-layout">
             <section className="km-game-board" aria-label="Word trail">
               <div className="km-trail-heading"><div><p className="km-kicker m-0">The word trail</p><h1>{lastWord ? "Keep the connection alive" : "Start with any word"}</h1></div><span className="km-trail-count">{wordHistory.length} {wordHistory.length === 1 ? "word" : "words"}</span></div>
-              {gameState?.status === "INGAME" && <div className={`km-burning-rope ${turnSecondsLeft === null ? "paused" : ""}`} role="progressbar" aria-label="Rope remaining this turn" aria-valuenow={turnSecondsLeft ?? TURN_DURATION_SECONDS} aria-valuemin={0} aria-valuemax={TURN_DURATION_SECONDS}><span style={{ width: `${turnProgress}%` }} /><i style={{ left: `${turnProgress}%` }} /></div>}
+              {gameState?.status === "INGAME" && !gameState.relaxed && <div className={`km-burning-rope ${turnSecondsLeft === null ? "paused" : ""}`} role="progressbar" aria-label="Rope remaining this turn" aria-valuenow={turnSecondsLeft ?? TURN_DURATION_SECONDS} aria-valuemin={0} aria-valuemax={TURN_DURATION_SECONDS}><span style={{ width: `${turnProgress}%` }} /><i style={{ left: `${turnProgress}%` }} /></div>}
+              {gameState?.status === "INGAME" && gameState.relaxed && <p className="km-muted">Relaxed mode · no turn timer</p>}
               <div ref={scrollRef} className="km-word-list">
                 {wordHistory.length === 0 && (
                   <div className="km-trail-empty"><Sparkles size={22} /><b>{gameState?.status === "INGAME" ? (isMyTurn ? "Your first word sets the direction." : "The trail is ready.") : "Reconnecting to your match…"}</b><span>{isMyTurn ? "Choose a word that feels like a beginning." : "The opening word will appear here."}</span></div>
@@ -301,20 +318,22 @@ export default function GameArena({ params }: GameArenaProps) {
               <div className="km-player-list">
                 {gameState?.players.map((player) => (
                   <div key={player.clientId} className={`km-game-status ${player.id === gameState.currentPlayerId ? "active" : ""} ${player.isEliminated ? "eliminated" : ""}`}>
-                    {player.isBot ? <span className="km-player-mark"><Sparkles size={15} /></span> : <FingerprintEmblem size={36} anchors={gameState.playerRadars?.find((radar) => radar.clientId === player.clientId)?.anchors ?? []} label={`${player.username}'s fingerprint`} />}<span className="km-player-copy"><b>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</b><small>{player.isEliminated ? "Out of lives" : player.id === gameState.currentPlayerId ? "Playing now" : "In the match"}</small></span><span className="km-life-pips" role="img" aria-label={`${player.livesRemaining ?? 3} of 3 lives remaining`}>{[0, 1, 2].map((life) => <i key={life} className={life >= (player.livesRemaining ?? 3) ? "lost" : ""} />)}</span>
+                    {player.isBot ? <span className="km-player-mark"><Sparkles size={15} /></span> : <FingerprintEmblem size={36} anchors={gameState.playerRadars?.find((radar) => radar.clientId === player.clientId)?.anchors ?? []} label={`${player.username}'s fingerprint`} />}<span className="km-player-copy"><b>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</b><small>{player.isEliminated ? "Judge · out of lives" : player.id === gameState.currentPlayerId ? "Playing now" : "In the match"} · {gameState.points?.[player.clientId] ?? 0} points</small></span><span className="km-life-pips" role="img" aria-label={`${player.livesRemaining ?? 3} of 3 lives remaining`}>{[0, 1, 2].map((life) => <i key={life} className={life >= (player.livesRemaining ?? 3) ? "lost" : ""} />)}</span>
                   </div>
                 ))}
                 {!gameState?.players.length && <p className="km-muted">Players will appear here when the room connects.</p>}
               </div>
 
+              {gameState?.appeal && <section className="km-appeal" aria-live="polite"><p className="km-kicker">Group decision · {Math.max(0, Math.ceil((gameState.appeal.deadline - now) / 1000))}s</p><h2>Does this link work?</h2><p><b>{gameState.appeal.playerName}</b> played <b>{gameState.appeal.word}</b>. Referee: {gameState.appeal.reason} ({Math.round(gameState.appeal.score * 100)}%).</p><p className="km-muted">A majority of eligible players can overrule the referee. Eliminated players may vote.</p>{gameState.appeal.eligibleIds.includes(session?.user?.id ?? "") && gameState.appeal.votes[session?.user?.id ?? ""] === undefined ? <div className="flex gap-2"><button className="km-button" type="button" onClick={() => socket.emit("voteAppeal", { roomId, approve: true })}>Allow link</button><button className="km-button-secondary" type="button" onClick={() => socket.emit("voteAppeal", { roomId, approve: false })}>Keep ruling</button></div> : <p className="km-muted">Waiting for the group…</p>}</section>}
+
               <div className="km-prompt-card"><small>{lastWord ? "Find a word connected to" : "Your opening move"}</small><h2 className="km-game-prompt">{lastWord ?? "Begin anywhere"}</h2><p>{lastWord ? "Find a clear, direct link between the words." : "Choose a word that opens a path."}</p></div>
               <form onSubmit={handleSubmit} className="km-word-form">
-                <label htmlFor="next-word">Your next word</label><div className="km-word-input-row"><input id="next-word" autoFocus value={input} onChange={(e) => { setInput(e.target.value); if (localError) setLocalError(null); if (serverError) setServerError(null); }} disabled={!isMyTurn || isBusy || gameState?.status !== "INGAME"} placeholder={!isMyTurn ? "Wait for your turn" : "Enter one word"} className="km-input" /><button type="submit" disabled={!input.trim() || !isMyTurn || isBusy} className="km-button"><Send size={17} /> Play</button></div>
+                <label htmlFor="next-word">Your next word</label><div className="km-word-input-row"><input id="next-word" autoFocus value={input} onChange={(e) => { setInput(e.target.value); if (localError) setLocalError(null); if (serverError) setServerError(null); }} disabled={!isMyTurn || isBusy || !!gameState?.appeal || gameState?.status !== "INGAME"} placeholder={!isMyTurn ? "Wait for your turn" : "Enter one word"} className="km-input" /><button type="submit" disabled={!input.trim() || !isMyTurn || isBusy || !!gameState?.appeal} className="km-button"><Send size={17} /> Play</button></div><small className="km-muted">Press Enter to play · riskier accepted links earn more points</small>
               </form>
               {localError && <p className="km-error"><AlertCircle size={15} />{localError}</p>}
               {lastRuling && !lastRuling.isValid && <p className="km-error"><AlertCircle size={15} />{lastRuling.reason}{lastRuling.score > 0 && ` Link strength: ${Math.round(lastRuling.score * 100)}%.`}</p>}
               {serverError && <p className="km-error" role="alert"><AlertCircle size={15} />{serverError}</p>}
-              <p className="km-game-hint">Words are checked for meaning and repetition. You are out if your link breaks.</p>
+              <p className="km-game-hint">An unrelated or repeated word costs one life. You have three lives.</p>
               {isMultiplayer && gameState.status === "INGAME" && <section className="km-match-chat" aria-label="Match chat">
                 <h2><MessageCircle size={17} /> Match chat</h2>
                 <div ref={chatScrollRef} className="km-chat-messages" role="log" aria-live="polite" aria-relevant="additions">
@@ -326,6 +345,7 @@ export default function GameArena({ params }: GameArenaProps) {
                   <button type="submit" className="km-button-secondary" disabled={!chatInput.trim()} aria-label="Send message"><Send size={16} /></button>
                 </form>
               </section>}
+              {isMultiplayer && gameState?.players.some((player) => !player.isBot && player.clientId !== session?.user?.id) && <details className="km-safety-panel"><summary>Report or block a player</summary><label>Player<select className="km-input" value={safetyTarget} onChange={(event) => setSafetyTarget(event.target.value)}><option value="">Choose a player</option>{gameState.players.filter((player) => !player.isBot && player.clientId !== session?.user?.id).map((player) => <option value={player.clientId} key={player.clientId}>{player.username}</option>)}</select></label><label>Reason<select className="km-input" value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="harassment">Harassment</option><option value="inappropriate language">Inappropriate language</option><option value="other">Other</option></select></label><label>Details (optional)<textarea className="km-input" maxLength={500} value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} /></label><div className="flex gap-2"><button className="km-button-secondary" type="button" disabled={!safetyTarget} onClick={() => void submitSafety("report")}>Send report</button><button className="km-button-secondary" type="button" disabled={!safetyTarget} onClick={() => void submitSafety("block")}>Block and leave</button></div><small role="status">{safetyStatus}</small></details>}
               <button type="button" onPointerDown={startLeaveHold} onPointerUp={cancelLeaveHold} onPointerLeave={cancelLeaveHold} onPointerCancel={cancelLeaveHold} onClick={(event) => { if (event.detail === 0) handleLeave(); }} className={`km-button-secondary km-hold-leave mt-5 ${holdingLeave ? "armed" : ""}`} aria-label="Hold to leave match"><span>Hold to leave</span><X size={15} /></button>
             </aside>
           </div>
@@ -344,25 +364,28 @@ export default function GameArena({ params }: GameArenaProps) {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="km-modal text-center"
+                className="km-modal km-result-modal text-center"
               >
                 <div className="w-16 h-16 rounded-full bg-[var(--color-purple)]/20 flex items-center justify-center mx-auto mb-4">
                   <Trophy size={32} className="text-[var(--color-purple)]" />
                 </div>
                 <h2 className="text-4xl mb-1">Game over</h2>
+                {gameState?.winner === session?.user?.name && <div className="km-confetti" aria-hidden="true">{Array.from({ length: 12 }, (_, index) => <span key={index} style={{ "--piece": index } as React.CSSProperties}>✦</span>)}</div>}
                 <p className="text-[var(--color-comment)] mb-4">
                   Winner:{" "}
                   <span className="text-[var(--color-fg)] font-bold">
                     {gameOver.winner}
                   </span>
                 </p>
+                <div className="km-result-scores">{gameState?.players.map((player) => <div key={player.clientId}><small>{player.username}</small><strong><CountUp value={gameState.points?.[player.clientId] ?? 0} /></strong><small>trail points{gameState.postgame?.bonusScores?.[player.clientId] ? ` · +${gameState.postgame.bonusScores[player.clientId]} bonus` : ""}</small></div>)}</div><p className="km-muted text-sm">Survival decides the winner; trail points break a tie. Sync and Read Me award separate bonuses.</p>
+                {gameState?.dailyDate && <DailyOriginality date={gameState.dailyDate} />}
                 {gameOver.commentary && (
                   <p className="text-sm text-[var(--color-comment)] italic mb-6 border border-[var(--color-line)] rounded-lg p-3">
                     "{gameOver.commentary}"
                   </p>
                 )}
-                {!!gameState?.wordHistory?.length && <MatchReplay words={gameState.wordHistory} names={gameState.wordHistory.map((_, index) => gameState.players.find((player) => player.clientId === gameState.wordAuthors?.[index])?.username ?? "Player")} scores={gameState.wordScores ?? []} recap={recapLines} />}
-                {gameState?.postgame && <PostgamePanel roomId={roomId} postgame={gameState.postgame} userId={session?.user?.id} now={now} socket={socket} />}
+                <div className="km-result-layout">{!!gameState?.wordHistory?.length && <MatchReplay words={gameState.wordHistory} names={gameState.wordHistory.map((_, index) => gameState.players.find((player) => player.clientId === gameState.wordAuthors?.[index])?.username ?? "Player")} scores={gameState.wordScores ?? []} recap={recapLines} />}
+                {gameState?.postgame && <PostgamePanel roomId={roomId} postgame={gameState.postgame} userId={session?.user?.id} now={now} socket={socket} />}</div>
                 {!!gameState?.wordScores?.length && <button className="km-button-secondary mb-3" type="button" title="Notes follow each accepted link's strength" onClick={() => replayTrailMelody(gameState.wordScores ?? [])}><Music2 size={17} /> Replay trail melody</button>}
                 <button
                   onClick={() => router.push("/dashboard")}

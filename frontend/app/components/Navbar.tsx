@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "./ThemeToggle";
 import { authClient } from "../auth/authClient";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LayoutDashboard, UserRound, UsersRound, CircleHelp, LogOut } from "lucide-react";
 import { useState } from "react";
 
 const { useSession, signOut } = authClient;
@@ -35,20 +35,21 @@ export default function Navbar() {
       <nav id="km-main-navigation" aria-label="Main navigation" className="km-nav-actions">
         {authenticated && (
           <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/dashboard" ? "page" : undefined} href="/dashboard">
-            Dashboard
+            <LayoutDashboard size={15} /> Dashboard
           </Link>
         )}
         {authenticated && (
           <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/profile" ? "page" : undefined} href="/profile">
-            Profile
+            <UserRound size={15} /> Profile
           </Link>
         )}
+        {authenticated && <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/connections" ? "page" : undefined} href="/connections"><UsersRound size={15} /> Connections</Link>}
         <Link onClick={() => setMenuOpen(false)} className="km-nav-link" aria-current={pathname === "/about" ? "page" : undefined} href="/about">
-          How it works
+          <CircleHelp size={15} /> How it works
         </Link>
         {!isPending && (authenticated ? (
           <button className="km-nav-link" onClick={() => { setMenuOpen(false); void signOut(); }}>
-            Sign out
+            <LogOut size={15} /> Sign out
           </button>
         ) : (
           <button className="km-nav-link" onClick={() => { setMenuOpen(false); void login(); }}>

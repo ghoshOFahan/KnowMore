@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { topicAnchors } from "../db/schema.js";
 import { judgeWords } from "../ai/judge.js";
 import { getFunnyComment } from "../ai/aiCommentator.js";
+import { connections, listReports, replaceAnchor, resolveReport, safetyAction } from "../controllers/social_controller.js";
 
 const router = Router();
 
@@ -22,8 +23,14 @@ router.post("/onboarding", requireAuth, insertData);
 router.get("/profile/radar", requireAuth, getProfileRadar);
 router.get("/profile/stats", requireAuth, getProfileStats);
 router.get("/profile/insights", requireAuth, getProfileInsights);
-router.get("/daily", requireAuth, async (_req, res) => {
-  try { res.json(await getDailyOverview()); }
+router.post("/profile/anchors/replace", requireAuth, replaceAnchor);
+router.get("/connections", requireAuth, connections);
+router.post("/safety/report", requireAuth, (req, res) => safetyAction(req, res, "report"));
+router.post("/safety/block", requireAuth, (req, res) => safetyAction(req, res, "block"));
+router.get("/safety/reports", requireAuth, listReports);
+router.post("/safety/reports/:id/resolve", requireAuth, resolveReport);
+router.get("/daily", requireAuth, async (req, res) => {
+  try { res.json(await getDailyOverview(req.user?.id)); }
   catch (error) { console.error("Could not load daily map:", error); res.status(500).json({ error: "Daily map unavailable" }); }
 });
 router.get("/onboarding/status", requireAuth, async (req, res) => {

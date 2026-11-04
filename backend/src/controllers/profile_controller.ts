@@ -32,10 +32,12 @@ export const getProfileRadar = async (
     const analyzedGames = await db
       .select({ anchorScores: gamePlayers.anchorScores })
       .from(gamePlayers)
-      .where(eq(gamePlayers.userId, userId));
+      .where(and(eq(gamePlayers.userId, userId), eq(gamePlayers.analysisVersion, 2)));
     const totals = new Map<string, number>();
+    const anchorNames = new Set(anchors.map((anchor) => anchor.subject));
     analyzedGames.forEach(({ anchorScores }) => {
       Object.entries(anchorScores ?? {}).forEach(([subject, score]) => {
+        if (!anchorNames.has(subject)) return;
         totals.set(subject, (totals.get(subject) ?? 0) + score);
       });
     });
@@ -118,6 +120,11 @@ export const getProfileInsights = async (
       .select({
         wordTrail: gamePlayers.wordTrail,
         anchorScores: gamePlayers.anchorScores,
+        offMapScores: gamePlayers.offMapScores,
+        analysisVersion: gamePlayers.analysisVersion,
+        measuredMoves: gamePlayers.measuredMoves,
+        acceptedLinks: gamePlayers.acceptedLinks,
+        exploratoryLinks: gamePlayers.exploratoryLinks,
       })
       .from(gamePlayers)
       .innerJoin(games, eq(gamePlayers.gameId, games.id))
@@ -130,11 +137,17 @@ export const getProfileInsights = async (
       .innerJoin(topics, eq(topicAnchors.topicId, topics.id))
       .where(eq(topicAnchors.userId, userId));
 
-    const analyzed = history.filter((game) => game.anchorScores !== null);
+    const analyzed = history.filter((game) => game.analysisVersion === 2 && game.anchorScores !== null);
+    const anchorNames = new Set(anchors.map((anchor) => anchor.subject));
     const totals = new Map<string, number>();
+    const offMap = new Map<string, number>();
     for (const game of analyzed) {
       for (const [topic, score] of Object.entries(game.anchorScores ?? {})) {
+        if (!anchorNames.has(topic)) continue;
         totals.set(topic, (totals.get(topic) ?? 0) + score);
+      }
+      for (const [topic, count] of Object.entries(game.offMapScores ?? {})) {
+        if (!anchorNames.has(topic)) offMap.set(topic, (offMap.get(topic) ?? 0) + count);
       }
     }
 
@@ -147,24 +160,31 @@ export const getProfileInsights = async (
       .sort((a, b) => b.score - a.score);
 
     const totalWords = history.reduce((sum, game) => sum + (game.wordTrail?.length ?? 0), 0);
+    const acceptedLinks = history.reduce((sum, game) => sum + game.acceptedLinks, 0);
+    const exploratoryLinks = history.reduce((sum, game) => sum + game.exploratoryLinks, 0);
+    const measuredWords = analyzed.reduce((sum, game) => sum + game.measuredMoves, 0);
     const recentWords = history.flatMap((game) => game.wordTrail ?? []).slice(0, 10);
     const nextToExplore = anchors
       .map((anchor) => ({ subject: anchor.subject, score: totals.get(anchor.subject) ?? 0 }))
       .sort((a, b) => a.score - b.score)[0]?.subject ?? null;
 
     const strongest = interests[0]?.subject;
-    const headline = analyzed.length < 3 || totalWords < 8
+    const headline = measuredWords < 30
       ? "Your interest map is taking shape"
       : strongest
         ? `Your word choices lean toward ${strongest}`
         : "Your interest map is taking shape";
-    const detail = analyzed.length < 3 || totalWords < 8
-      ? "New matches map your own accepted words. Play a few more to see which topics you return to."
-      : `${analyzed.length} matches and ${totalWords} of your accepted words shape this map.`;
+    const detail = measuredWords < 30
+      ? `${measuredWords} of 30 words analyzed. Your fingerprint is still forming.`
+      : `${analyzed.length} matches and ${measuredWords} accepted words shape this map.`;
 
     res.json({
       analyzedGames: analyzed.length,
       totalWords,
+      measuredWords,
+      confidence: measuredWords < 30 ? "still forming" : "established",
+      linkStyle: { acceptedLinks, exploratoryLinks },
+      offMap: [...offMap.entries()].map(([subject, count]) => ({ subject, count })).sort((a, b) => b.count - a.count),
       interests,
       nextToExplore,
       recentWords,

@@ -20,6 +20,7 @@ export interface PostgameState {
   topicChoices?: string[];
   readableIds?: string[];
   radars?: { clientId: string; anchors: { subject: string; score: number }[] }[];
+  matchRadars?: { clientId: string; anchors: { subject: string; score: number }[] }[];
   icebreakers?: string[];
 }
 export interface GameState {
@@ -37,4 +38,8 @@ export interface GameState {
   postgame?: PostgameState;
   playerRadars?: { clientId: string; anchors: { subject: string; score: number }[] }[];
   dailyDate?: string;
+  relaxed?: boolean;
+  points?: Record<string, number>;
+  savedGameId?: number;
+  appeal?: { playerId: string; playerName: string; word: string; score: number; reason: string; deadline: number; eligibleIds: string[]; votes: Record<string, boolean> };
 }

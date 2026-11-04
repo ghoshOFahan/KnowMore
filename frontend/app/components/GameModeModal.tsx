@@ -11,7 +11,7 @@ import {
   Plus,
   CalendarDays,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "../auth/authClient";
 import { getSocket } from "../hooks/useSocket";
@@ -27,18 +27,26 @@ interface GameModeModalProps {
 
 export default function GameModeModal({ isOpen, onClose, initialMode = null }: GameModeModalProps) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
   const [selectedMode, setSelectedMode] = useState<
     "ai" | "multiplayer" | "join" | "daily" | null
   >(null);
   const [joinRoomId, setJoinRoomId] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [relaxed, setRelaxed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) setSelectedMode(initialMode);
   }, [isOpen, initialMode]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = requestAnimationFrame(() => dialogRef.current?.focus());
+    return () => { cancelAnimationFrame(frame); previous?.focus(); };
+  }, [isOpen]);
 
   const handleStart = () => {
     if (!selectedMode || !session?.user?.id) return;
@@ -68,6 +76,7 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
         username,
         maxPlayers,
         clientId,
+        relaxed,
       });
     } else if (selectedMode === "join") {
       if (!joinRoomId.trim()) {
@@ -119,6 +128,7 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
     setSelectedMode(null);
     setJoinRoomId("");
     setMaxPlayers(4);
+    setRelaxed(false);
     onClose();
   };
 
@@ -169,15 +179,29 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className="km-modal"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="play-dialog-title"
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { handleClose(); return; }
+              if (event.key !== "Tab") return;
+              const items = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), [href]')];
+              if (!items.length) return;
+              if (event.shiftKey && (document.activeElement === items[0] || document.activeElement === event.currentTarget)) { event.preventDefault(); items[items.length - 1]?.focus(); }
+              else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0]?.focus(); }
+            }}
           >
             <div className="relative z-10">
               <div className="flex justify-between items-center mb-5">
-                <h2 className="m-0 text-4xl text-[var(--color-fg)]">
+                <h2 id="play-dialog-title" className="m-0 text-4xl text-[var(--color-fg)]">
                   Choose how to play
                 </h2>
                 <button
                   onClick={handleClose}
                   className="km-button-secondary p-2"
+                  aria-label="Close play options"
                 >
                   <X size={20} className="text-[var(--color-comment)]" />
                 </button>
@@ -194,17 +218,9 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
                     aria-pressed={selectedMode === mode.id}
                     className="km-mode-option"
                   >
-                    <div
-                      className={`w-10 h-10 rounded-sm bg-gradient-to-br ${mode.color} flex items-center justify-center text-[#26254a] mb-3`}
-                    >
-                      {mode.icon}
-                    </div>
-                    <b className="text-[var(--color-fg)] mb-1 block">
-                      {mode.title}
-                    </b>
-                    <small className="text-[var(--color-comment)] leading-relaxed">
-                      {mode.desc}
-                    </small>
+                    <span className={`km-mode-icon bg-gradient-to-br ${mode.color}`}>{mode.icon}</span>
+                    <span className="km-mode-copy"><b>{mode.title}</b><small>{mode.desc}</small></span>
+                    <span className="km-mode-radio" aria-hidden="true">{selectedMode === mode.id ? "✓" : ""}</span>
 
                   </button>
                 ))}
@@ -233,9 +249,7 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
 
                       <div className="flex items-center gap-3">
                         <button
-                          onClick={() =>
-                            setMaxPlayers((p) => Math.max(2, p - 1))
-                          }
+                          onClick={() => { setRelaxed(false); setMaxPlayers((p) => Math.max(2, p - 1)); }}
                           className="w-7 h-7 rounded-lg border border-[var(--color-line)] flex items-center justify-center hover:bg-[var(--color-line)] transition-colors text-[var(--color-comment)] hover:text-[var(--color-fg)] shrink-0"
                         >
                           <Minus size={14} />
@@ -259,16 +273,14 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
                             min={2}
                             max={7}
                             value={maxPlayers}
-                            onChange={(e) =>
-                              setMaxPlayers(parseInt(e.target.value))
-                            }
+                            onChange={(e) => { setRelaxed(false); setMaxPlayers(parseInt(e.target.value)); }}
                             className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
                           />
                           <div className="absolute -bottom-4 left-0 right-0 flex justify-between">
                             {[2, 3, 4, 5, 6, 7].map((n) => (
                               <span
                                 key={n}
-                                onClick={() => setMaxPlayers(n)}
+                                onClick={() => { setRelaxed(false); setMaxPlayers(n); }}
                                 className={`text-[10px] cursor-pointer transition-colors ${
                                   maxPlayers === n
                                     ? "text-[var(--color-purple)] font-bold"
@@ -282,9 +294,7 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
                         </div>
 
                         <button
-                          onClick={() =>
-                            setMaxPlayers((p) => Math.min(7, p + 1))
-                          }
+                          onClick={() => { setRelaxed(false); setMaxPlayers((p) => Math.min(7, p + 1)); }}
                           className="w-7 h-7 rounded-lg border border-[var(--color-line)] flex items-center justify-center hover:bg-[var(--color-line)] transition-colors text-[var(--color-comment)] hover:text-[var(--color-fg)] shrink-0"
                         >
                           <Plus size={14} />
@@ -314,6 +324,7 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
                           </motion.div>
                         ))}
                       </div>
+                      <label className="km-relaxed-option"><input type="checkbox" checked={relaxed} onChange={(event) => { setRelaxed(event.target.checked); if (event.target.checked) setMaxPlayers(2); }} /> Relaxed mode <small>No turn timer for two players</small></label>
                     </div>
                   </motion.div>
                 )}
@@ -332,8 +343,8 @@ export default function GameModeModal({ isOpen, onClose, initialMode = null }: G
                       onChange={(e) =>
                         setJoinRoomId(e.target.value.toUpperCase())
                       }
-                      placeholder="Enter room code (e.g. XKQR)"
-                      maxLength={4}
+                      placeholder="Enter 8-letter room code"
+                      maxLength={8}
                       className="km-input font-mono tracking-widest"
                     />
                   </motion.div>

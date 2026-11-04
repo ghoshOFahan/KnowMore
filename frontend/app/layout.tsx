@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "next-themes";
+import PointerGlow from "./components/PointerGlow";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +35,7 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=Schibsted+Grotesk:wght@400;600;800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Caveat:wght@700&display=swap" rel="stylesheet" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -45,6 +46,7 @@ export default function RootLayout({
           themes={["tokyo", "dracula"]}
           enableSystem={false}
         >
+          <PointerGlow />
           {children}
         </ThemeProvider>
         <Analytics />

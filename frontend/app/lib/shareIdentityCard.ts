@@ -10,6 +10,7 @@ export interface IdentityCardData {
   matches: number;
   winRate: number;
   words: number;
+  showStats?: boolean;
 }
 
 const WIDTH = 800;
@@ -77,9 +78,9 @@ export function createIdentityCard(data: IdentityCardData): string {
     <text x="72" y="871" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="16" letter-spacing="2">RECENT WORDS</text>
     <text x="72" y="907" fill="#f2f0ff" font-family="Georgia,serif" font-size="23">${escapeXml(note)}</text>
     <line x1="72" x2="728" y1="937" y2="937" stroke="#4b4576" stroke-width="2"/>
-    <text x="80" y="978" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="15">MATCHES</text><text x="80" y="1030" fill="#f2f0ff" font-family="Georgia,serif" font-size="40">${matches}</text>
+    ${data.showStats === false ? '<text x="400" y="1010" text-anchor="middle" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="18">Match statistics hidden</text>' : `<text x="80" y="978" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="15">MATCHES</text><text x="80" y="1030" fill="#f2f0ff" font-family="Georgia,serif" font-size="40">${matches}</text>
     <text x="316" y="978" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="15">WIN RATE</text><text x="316" y="1030" fill="#f2f0ff" font-family="Georgia,serif" font-size="40">${winRate}%</text>
-    <text x="556" y="978" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="15">MY WORDS</text><text x="556" y="1030" fill="#f2f0ff" font-family="Georgia,serif" font-size="40">${words}</text>
+    <text x="556" y="978" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="15">MY WORDS</text><text x="556" y="1030" fill="#f2f0ff" font-family="Georgia,serif" font-size="40">${words}</text>`}
     <text x="400" y="1073" text-anchor="middle" fill="#bdb5ff" font-family="Arial,sans-serif" font-size="16">knowmore.ahanghosh.me</text>
   </svg>`;
 }

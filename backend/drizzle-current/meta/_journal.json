@@ -8,6 +8,34 @@
       "when": 1793049928320,
       "tag": "0000_petite_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793822386166,
+      "tag": "0001_game_insights_and_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793822813656,
+      "tag": "0002_link_style",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793822968179,
+      "tag": "0003_report_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793823358988,
+      "tag": "0004_measured_moves",
+      "breakpoints": true
     }
   ]
 }

@@ -6,10 +6,10 @@ import { authClient } from "../auth/authClient";
 import { ArrowRight } from "lucide-react";
 
 const steps = [
-  ["Choose five topic anchors", "Pick topics like Space, Music, or Biology. They become the corners of your personal map."],
+  ["Build your first map", "Choose five topics, or answer five word prompts and let your associations suggest them."],
   ["Play the word chain", "Take turns adding a word connected to the last one. A trail can wander anywhere."],
   ["Let the judge check each link", "The AI looks at meaning, not spelling. Break the connection or repeat a word and you lose a life."],
-  ["Watch your map evolve", "Words that land near an anchor add to its score. Play more and your semantic fingerprint takes shape."],
+  ["Watch your map evolve", "Your moves add to a topic when they pull the trail closer to it. New directions can become anchors."],
 ];
 
 const faqs = [
@@ -50,7 +50,7 @@ export default function AboutPage() {
         <section className="km-section-card">
           <p className="km-kicker">The idea behind the map</p>
           <h2>Semantic gravity</h2>
-          <p className="km-muted">Think of your five anchors as places in idea-space. Each word you play is compared with those anchors. The closest one gains points, and the radar shows which ideas pull you in most often.</p>
+          <p className="km-muted">Think of your five anchors as places in idea-space. Each move compares your word with the one before it. The radar shows where your choices pulled the trail over time.</p>
         </section>
 
         <section aria-labelledby="faq-heading" className="my-12">
@@ -67,7 +67,7 @@ export default function AboutPage() {
 
         <section className="km-section-card">
           <h2>Ready to start a trail?</h2>
-          <p className="km-muted">Pick your anchors and see where your next word takes you.</p>
+          <p className="km-muted">Start your map and see where your next word takes you.</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <button className="km-button-gold" onClick={startGoogle}>Continue with Google <ArrowRight size={16} /></button>
             <Link className="km-button-secondary" href="/">Back home</Link>

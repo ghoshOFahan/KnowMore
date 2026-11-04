@@ -1,0 +1,1 @@
+ALTER TABLE "knowmore"."safety_reports" ADD COLUMN "status" text DEFAULT 'open' NOT NULL;

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { cosineSimilarity, embedWord } from "../ai/embeddingJudge.js";
 
-const TOPIC_CATALOG = [
+export const TOPIC_CATALOG = [
   "Space", "Philosophy", "Nature", "Technology", "Chaos", "Logic", "Emotion",
   "History", "Future", "Art", "War", "Peace", "Biology", "Code", "Music",
   "Ocean", "Mind", "Power", "Silence", "Time",

@@ -34,6 +34,7 @@ export interface ClientToServerEvents {
     maxPlayers?: number;
     clientId: string;
     mode?: "ai" | "multiplayer" | "daily";
+    relaxed?: boolean;
   }) => void;
   joinRoom: ({ username, roomId, clientId }) => void;
   reconnectRoom: (oldsocketid) => void;
@@ -42,6 +43,7 @@ export interface ClientToServerEvents {
   sendChatMessage: (data: { roomId: string; text: string }) => void;
   submitSync: (data: { roomId: string; word: string }) => void;
   submitReadMe: (data: { roomId: string; targetId: string; topic: string }) => void;
+  voteAppeal: (data: { roomId: string; approve: boolean }) => void;
 }
 
 export interface InterServerEvents {

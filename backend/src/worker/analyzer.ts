@@ -5,6 +5,8 @@ import { topicAnchors, topics, gamePlayers } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { embedWord, cosineSimilarity } from "../ai/embeddingJudge.js";
 import type { GameState } from "../types/game.js";
+import { TOPIC_CATALOG } from "../controllers/onboarding_controller.js";
+import { directionalPull } from "../gameRules.js";
 
 const redisConnection = new Redis(process.env.REDIS_URL as string, {
   maxRetriesPerRequest: null,
@@ -26,17 +28,17 @@ export const analyticsWorker = new Worker(
     const { gameState } = job.data;
     const { gameId, wordAuthors } = job.data;
     const { wordHistory, players } = gameState;
+    let catalog = await db.select({ name: topics.name, vector: topics.embeddingVector }).from(topics);
+    const missingTopics = TOPIC_CATALOG.filter((name) => !catalog.some((topic) => topic.name === name));
+    for (let index = 0; index < missingTopics.length; index += 4) {
+      await Promise.all(missingTopics.slice(index, index + 4).map(async (name) => {
+        try { await db.insert(topics).values({ name, embeddingVector: await embedWord(name) }).onConflictDoNothing({ target: topics.name }); }
+        catch (error) { console.error("Could not prepare topic embedding:", name, error); }
+      }));
+    }
+    if (missingTopics.length) catalog = await db.select({ name: topics.name, vector: topics.embeddingVector }).from(topics);
 
     console.log("[Worker] roomId:", gameState.roomId);
-    console.log("[Worker] wordHistory:", wordHistory);
-    console.log(
-      "[Worker] players:",
-      players.map((p) => ({
-        id: p.id,
-        clientId: p.clientId,
-        username: p.username,
-      })),
-    );
 
     if (!wordHistory || wordHistory.length === 0) {
       console.log("[Worker] No word history — skipping");
@@ -49,11 +51,8 @@ export const analyticsWorker = new Worker(
       try {
         const vec = await embedWord(word);
         wordVectors.push(vec);
-        console.log(
-          `[Worker] Embedded word "${word}" — vector length: ${vec.length}`,
-        );
       } catch (e) {
-        console.error(`[Worker] Failed to embed word "${word}":`, e);
+        console.error("[Worker] Failed to embed a word:", e);
         wordVectors.push([]);
       }
     }
@@ -61,9 +60,6 @@ export const analyticsWorker = new Worker(
     // Process each player
     for (const player of players) {
       const userId = player.clientId;
-      console.log(
-        `[Worker] Processing player: ${player.username}, clientId: "${userId}"`,
-      );
 
       if (!userId) {
         console.log("[Worker] No clientId — skipping player");
@@ -81,13 +77,9 @@ export const analyticsWorker = new Worker(
         .innerJoin(topics, eq(topicAnchors.topicId, topics.id))
         .where(eq(topicAnchors.userId, userId));
 
-      console.log(
-        `[Worker] Anchors found for ${player.username}:`,
-        userAnchors.map((a) => a.name),
-      );
 
       if (userAnchors.length === 0) {
-        console.log(`[Worker] No anchors for ${player.username} — skipping`);
+        console.log("[Worker] No anchors for player, skipping");
         continue;
       }
 
@@ -95,49 +87,42 @@ export const analyticsWorker = new Worker(
       userAnchors.forEach((a) => (scoreUpdates[a.topicId] = 0));
 
       const playerScores: Record<string, number> = {};
+      const offMapScores: Record<string, number> = {};
+      let measuredMoves = 0;
+      const anchorNames = new Set(userAnchors.map((anchor) => anchor.name));
 
       // Measure only this player's accepted words, not the whole table's trail.
       for (let i = 0; i < wordHistory.length; i++) {
-        if (wordAuthors[i] !== userId) continue;
+        if (i === 0 || wordAuthors[i] !== userId) continue;
         const wordVec = wordVectors[i];
-        if (!wordVec || wordVec.length === 0) continue;
-
-        let bestTopicId = -1;
-        let highestSim = -1;
+        const previousVec = wordVectors[i - 1];
+        if (!wordVec?.length || !previousVec?.length) continue;
+        measuredMoves += 1;
 
         for (const anchor of userAnchors) {
           if (!anchor.vector || anchor.vector.length === 0) continue;
-          const sim = cosineSimilarity(wordVec, anchor.vector);
-          if (sim > highestSim) {
-            highestSim = sim;
-            bestTopicId = anchor.topicId;
+          const pull = directionalPull(cosineSimilarity(wordVec, anchor.vector), cosineSimilarity(previousVec, anchor.vector));
+          if (pull > 0) {
+            scoreUpdates[anchor.topicId] = (scoreUpdates[anchor.topicId] ?? 0) + pull * 10;
+            playerScores[anchor.name] = (playerScores[anchor.name] ?? 0) + pull;
           }
         }
-
-        console.log(
-          `[Worker] Word "${wordHistory[i]}" → best topic id: ${bestTopicId}, sim: ${highestSim.toFixed(4)}`,
-        );
-
-        if (highestSim > 0.35 && bestTopicId !== -1) {
-          scoreUpdates[bestTopicId] =
-            (scoreUpdates[bestTopicId] ?? 0) + highestSim * 10;
-          const topicName = userAnchors.find((a) => a.topicId === bestTopicId)?.name;
-          if (topicName) playerScores[topicName] = (playerScores[topicName] ?? 0) + highestSim;
+        const closestAnchor = Math.max(...userAnchors.map((anchor) => cosineSimilarity(wordVec, anchor.vector)));
+        const candidate = catalog.filter((topic) => !anchorNames.has(topic.name) && topic.vector?.length)
+          .map((topic) => ({ name: topic.name, similarity: cosineSimilarity(wordVec, topic.vector), pull: cosineSimilarity(wordVec, topic.vector) - cosineSimilarity(previousVec, topic.vector) }))
+          .sort((a, b) => b.similarity - a.similarity)[0];
+        if (candidate && candidate.similarity > 0.35 && candidate.similarity > closestAnchor && candidate.pull > 0.05) {
+          offMapScores[candidate.name] = (offMapScores[candidate.name] ?? 0) + 1;
+        } else if (closestAnchor <= 0.35) {
+          offMapScores.Other = (offMapScores.Other ?? 0) + 1;
         }
       }
 
-      console.log(
-        `[Worker] Score updates for ${player.username}:`,
-        scoreUpdates,
-      );
 
       // Update DB
       for (const anchor of userAnchors) {
         const pointsToAdd = scoreUpdates[anchor.topicId];
         if (pointsToAdd && pointsToAdd > 0) {
-          console.log(
-            `[Worker] Adding ${pointsToAdd.toFixed(2)} points to topic "${anchor.name}" for ${player.username}`,
-          );
           await db
             .update(topicAnchors)
             .set({
@@ -149,17 +134,12 @@ export const analyticsWorker = new Worker(
                 eq(topicAnchors.topicId, anchor.topicId),
               ),
             );
-          console.log(`[Worker] DB updated for topic "${anchor.name}"`);
-        } else {
-          console.log(
-            `[Worker] No points to add for topic "${anchor.name}" (score: ${pointsToAdd})`,
-          );
         }
       }
 
       await db
         .update(gamePlayers)
-        .set({ anchorScores: playerScores })
+        .set({ anchorScores: playerScores, offMapScores, analysisVersion: 2, measuredMoves })
         .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.userId, userId)));
     }
 
@@ -178,7 +158,7 @@ analyticsWorker.on("completed", (job) => {
 
 analyticsWorker.on("failed", (job, err) => {
   console.error(`[Worker] Job failed:`, err);
-  console.error(`[Worker] Job data:`, job?.data);
+  console.error("[Worker] Job ID:", job?.id);
 });
 
 analyticsWorker.on("active", (job) => {

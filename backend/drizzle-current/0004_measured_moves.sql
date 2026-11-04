@@ -1,0 +1,1 @@
+ALTER TABLE "knowmore"."game_players" ADD COLUMN "measured_moves" integer DEFAULT 0 NOT NULL;

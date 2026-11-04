@@ -141,7 +141,41 @@ export const gamePlayers = table(
     wordsContributed: t.integer("words_contributed").default(0),
     wordTrail: t.text("word_trail").array().notNull().default([]),
     anchorScores: t.jsonb("anchor_scores").$type<Record<string, number>>(),
+    offMapScores: t.jsonb("off_map_scores").$type<Record<string, number>>(),
+    analysisVersion: t.integer("analysis_version").notNull().default(1),
+    measuredMoves: t.integer("measured_moves").notNull().default(0),
+    gamePoints: t.integer("game_points").notNull().default(0),
+    acceptedLinks: t.integer("accepted_links").notNull().default(0),
+    exploratoryLinks: t.integer("exploratory_links").notNull().default(0),
     rank: t.integer("rank"),
   },
   (table) => [primaryKey({ columns: [table.gameId, table.userId] })],
 );
+
+export const pairResults = table("pair_results", {
+  gameId: t.integer("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
+  userA: t.text("user_a").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userB: t.text("user_b").notNull().references(() => users.id, { onDelete: "cascade" }),
+  syncResult: t.text("sync_result").notNull(),
+  readA: t.boolean("read_a"),
+  readB: t.boolean("read_b"),
+  overlap: t.real("overlap"),
+  playedAt: t.timestamp("played_at").defaultNow().notNull(),
+}, (row) => [primaryKey({ columns: [row.gameId, row.userA, row.userB] })]);
+
+export const userBlocks = table("user_blocks", {
+  blockerId: t.text("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedId: t.text("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: t.timestamp("created_at").defaultNow().notNull(),
+}, (row) => [primaryKey({ columns: [row.blockerId, row.blockedId] })]);
+
+export const safetyReports = table("safety_reports", {
+  id: t.integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  reporterId: t.text("reporter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reportedId: t.text("reported_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roomId: t.varchar("room_id", { length: 10 }).notNull(),
+  category: t.text("category").notNull(),
+  details: t.text("details").notNull().default(""),
+  status: t.text("status").notNull().default("open"),
+  createdAt: t.timestamp("created_at").defaultNow().notNull(),
+});

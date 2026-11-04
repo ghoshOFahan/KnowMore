@@ -15,12 +15,11 @@ export default function ThemeToggle() {
 
   return (
     <button
-      aria-label="Switch color theme"
+      aria-label={isDracula ? "Switch to light theme" : "Switch to dark theme"}
       onClick={() => setTheme(isDracula ? "tokyo" : "dracula")}
       className="km-nav-link flex items-center gap-2"
     >
-      {isDracula ? <Moon size={15} /> : <Sun size={15} />}
-      <span>Theme</span>
+      {isDracula ? <Sun size={17} /> : <Moon size={17} />}
     </button>
   );
 }

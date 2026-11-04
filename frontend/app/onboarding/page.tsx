@@ -7,6 +7,7 @@ import ProtectedRoute from "../auth/ProtectedRoute";
 import Navbar from "../components/Navbar";
 
 const CUES = ["bridge", "mirror", "seed", "current", "echo"];
+const TOPICS = ["Space", "Philosophy", "Nature", "Technology", "Chaos", "Logic", "Emotion", "History", "Future", "Art", "War", "Peace", "Biology", "Code", "Music", "Ocean", "Mind", "Power", "Silence", "Time"];
 
 export default function Onboarding() {
   const router = useRouter();
@@ -15,6 +16,8 @@ export default function Onboarding() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
+  const [manual, setManual] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/onboarding/status", { credentials: "include" })
@@ -64,6 +67,17 @@ export default function Onboarding() {
     setError("");
   };
 
+  const saveTopics = async () => {
+    if (selected.length !== 5) return;
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ topicArray: selected }) });
+      if (!response.ok) throw new Error("Could not save your topics. Please try again.");
+      router.push("/dashboard");
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not save your topics."); setIsSubmitting(false); }
+  };
+
   if (checking) return null;
   const cue = CUES[words.length];
 
@@ -72,6 +86,14 @@ export default function Onboarding() {
       <div className="km-page">
         <Navbar />
         <main className="km-onboarding km-discovery">
+          {manual ? <>
+            <p className="km-kicker">Make your own map</p><h1>Pick five anchors</h1>
+            <p className="km-lede">Choose the topics you want to explore. You can replace an anchor later as your map grows.</p>
+            <div className="km-discovery-progress" aria-label={`${selected.length} of five topics chosen`}>{Array.from({ length: 5 }, (_, index) => <span key={index} className={index < selected.length ? "complete" : ""} />)}</div>
+            <div className="km-anchor-grid">{TOPICS.map((topic) => { const active = selected.includes(topic); return <button type="button" key={topic} className="km-anchor-chip" aria-pressed={active} disabled={!active && selected.length === 5} onClick={() => setSelected((current) => active ? current.filter((item) => item !== topic) : [...current, topic])}>{topic}{active && <span aria-hidden="true"> ✓</span>}</button>; })}</div>
+            <div className="km-onboarding-actions"><button className="km-button" type="button" disabled={selected.length !== 5 || isSubmitting} onClick={() => void saveTopics()}>Save and continue</button><span className="km-muted">{selected.length} of 5 chosen</span><button className="km-button-secondary" type="button" onClick={() => { setManual(false); setError(""); }}>Use word prompts</button></div>
+            {error && <p className="km-error" role="alert">{error}</p>}
+          </> : <>
           <p className="km-kicker">A quick word trail</p>
           <h1>Let your words build your map</h1>
           <p className="km-lede">
@@ -118,6 +140,8 @@ export default function Onboarding() {
             </div>
           )}
           <p className="km-discovery-privacy">Your map is based on your own words and accepted game turns. It helps personalize your KnowMore experience and is private to your account.</p>
+          <button className="km-button-secondary mt-5" type="button" onClick={() => { setManual(true); setError(""); }}>Choose my topics instead</button>
+          </>}
         </main>
       </div>
     </ProtectedRoute>
