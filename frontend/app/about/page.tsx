@@ -19,6 +19,7 @@ const faqs = [
 ];
 
 export default function AboutPage() {
+  const { data: session, isPending } = authClient.useSession();
   const startGoogle = async () => {
     await authClient.signIn.social({
       provider: "google",
@@ -66,12 +67,24 @@ export default function AboutPage() {
         </section>
 
         <section className="km-section-card">
-          <h2>Ready to start a trail?</h2>
-          <p className="km-muted">Start your map and see where your next word takes you.</p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button className="km-button-gold" onClick={startGoogle}>Continue with Google <ArrowRight size={16} /></button>
-            <Link className="km-button-secondary" href="/">Back home</Link>
-          </div>
+          {!isPending && (session?.user ? (
+            <>
+              <h2>Ready for another trail?</h2>
+              <p className="km-muted">Head to your dashboard to start your next game.</p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link className="km-button-gold" href="/dashboard">Go to dashboard <ArrowRight size={16} /></Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2>Ready to start a trail?</h2>
+              <p className="km-muted">Start your map and see where your next word takes you.</p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button className="km-button-gold" onClick={startGoogle}>Continue with Google <ArrowRight size={16} /></button>
+                <Link className="km-button-secondary" href="/">Back home</Link>
+              </div>
+            </>
+          ))}
         </section>
       </main>
     </div>
