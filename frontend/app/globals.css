@@ -201,6 +201,15 @@ h3 { font-weight: 600; }
 .km-lobby-chain .km-chain-rope { height: 15px; }
 .km-lobby-chain .km-chain-tile { min-width: 96px; padding: 8px 14px 9px; font-size: 20px; }
 .km-lobby-chain .km-chain-caption { min-height: 20px; margin-top: 0; font-size: 12px; }
+.km-lobby-trail { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: flex-start; width: min(360px, 100%); }
+.km-lobby-trail-pin { width: 9px; height: 9px; border-radius: 50%; background: var(--color-purple); }
+.km-lobby-trail-link { display: flex; flex-direction: column; align-items: center; }
+.km-lobby-trail-link::before { content: ""; width: 1px; height: 16px; background: var(--color-line); }
+.km-lobby-trail-link > span { max-width: 260px; overflow-wrap: anywhere; padding: 7px 18px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-panel); font: 500 20px var(--font-display); }
+.km-lobby-trail-link:nth-child(odd) > span { transform: rotate(2deg); }
+.km-lobby-trail-link:nth-child(even) > span { transform: rotate(-2deg); }
+.km-lobby-trail small { margin-top: 14px; color: var(--color-comment); font-size: 12px; }
+.km-lobby-trail > p { margin-top: 26px; font-size: 14px; }
 .km-lobby-play { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-width: 230px; min-height: 62px; margin-top: 10px; padding: 12px 30px; border: 0; border-radius: 4px; color: #26254a; background: var(--color-pink); box-shadow: 0 10px 30px color-mix(in srgb, var(--color-pink) 20%, transparent); font-size: 20px; font-weight: 700; transition: transform .18s ease, box-shadow .18s ease; }
 .km-lobby-play:hover { transform: translateY(-3px); box-shadow: 0 14px 34px color-mix(in srgb, var(--color-pink) 32%, transparent); }
 .km-daily-badge { position: absolute; top: 24px; right: 4px; display: inline-flex; align-items: center; gap: 10px; padding: 9px 13px 9px 9px; border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-fg); background: var(--color-panel); text-align: left; transition: border-color .15s ease, transform .15s ease; }

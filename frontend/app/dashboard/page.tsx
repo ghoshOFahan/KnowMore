@@ -9,7 +9,6 @@ import ProtectedRoute from "../auth/ProtectedRoute";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 import { createIdentityCard, identityCardPng } from "../lib/shareIdentityCard";
 import FingerprintEmblem from "../components/FingerprintEmblem";
-import HangingWordChain from "../components/HangingWordChain";
 import CountUp from "../components/CountUp";
 
 const { useSession } = authClient;
@@ -143,15 +142,19 @@ export default function Dashboard() {
         <main className="km-content km-lobby-content">
           <section className="km-lobby-hero" aria-labelledby="lobby-title">
             <div className="km-lobby-heading">
-              <p className="km-kicker">Your next word is waiting</p>
-              <h1 id="lobby-title">Where will your mind go?</h1>
-              <p className="km-muted">Follow a thought, make a surprising link, and see the shape it leaves behind.</p>
+              <p className="km-kicker">Your lobby</p>
+              <h1 id="lobby-title">Welcome back, {session?.user?.name?.split(" ")[0] ?? "player"}.</h1>
             </div>
             <div className="km-lobby-player">
               <FingerprintEmblem anchors={radarData} label="Your fingerprint emblem" size={96} />
-              <div><strong>{session?.user?.name ?? "Player"}</strong><span>Your word trail identity</span></div>
             </div>
-            <div className="km-lobby-chain"><HangingWordChain /></div>
+            <div className="km-lobby-trail" aria-label="Your recent words">
+              <span className="km-lobby-trail-pin" aria-hidden="true" />
+              {insights?.recentWords?.length ? insights.recentWords.slice(0, 3).map((word, index) => (
+                <span className="km-lobby-trail-link" key={`${word}-${index}`}><span>{word}</span></span>
+              )) : <p className="km-muted">Your recent words will find a home here.</p>}
+              {Boolean(insights?.recentWords?.length) && <small>Words from your recent trails</small>}
+            </div>
             <button className="km-lobby-play" type="button" onClick={() => openMode("ai")}><Play size={20} fill="currentColor" /> Play</button>
             <button className="km-daily-badge" type="button" onClick={() => openMode("daily")} aria-label={`Play today's daily chain. ${daily?.streak ?? 0} day streak`}>
               <span className="km-daily-badge-icon"><CalendarDays size={17} /></span>
