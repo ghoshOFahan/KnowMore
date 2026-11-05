@@ -98,7 +98,7 @@ export default function GameArena({ params }: GameArenaProps) {
 
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-  }, [chatMessages.length]);
+  }, [chatMessages.length, drawer]);
 
   // Socket event listeners
   useEffect(() => {
@@ -311,7 +311,6 @@ export default function GameArena({ params }: GameArenaProps) {
             </section>
             <div className="km-focus-toolbar"><span>{wordHistory.length} {wordHistory.length === 1 ? "word" : "words"}</span><div><button type="button" className="km-button-secondary" onClick={() => setDrawer("trail")}>Trail</button>{isMultiplayer && <button type="button" className="km-button-secondary" onClick={() => setDrawer("chat")}><MessageCircle size={16} /> Chat{chatMessages.length > 0 && ` (${chatMessages.length})`}</button>}<button type="button" className="km-button-secondary" onClick={() => setConfirmLeave(true)}>Leave match</button></div></div>
             {drawer && <><div className="km-focus-backdrop" onClick={() => setDrawer(null)} /><aside className="km-focus-drawer" role="dialog" aria-modal="true" aria-label={drawer === "trail" ? "Match trail" : "Match chat"}><div className="km-focus-drawer-head"><div><small className="km-muted">Room</small><h2>{roomId}</h2></div><button type="button" className="km-button-secondary" onClick={() => setDrawer(null)} aria-label="Close drawer"><X size={18} /></button></div><div className="km-focus-tabs"><button className={drawer === "trail" ? "active" : ""} onClick={() => setDrawer("trail")}>Trail</button>{isMultiplayer && <button className={drawer === "chat" ? "active" : ""} onClick={() => setDrawer("chat")}>Chat</button>}</div>{drawer === "trail" ? <div ref={scrollRef} className="km-focus-moves">{wordHistory.length ? wordHistory.map((move) => <div key={move.id}><small>{String(move.id + 1).padStart(2, "0")}</small><b>{move.word}</b><span>{move.isMe ? "You" : move.playerName}{typeof move.strength === "number" ? ` · ${Math.round(move.strength * 100)}%` : " · opening"}</span></div>) : <p className="km-muted">Words show up here as you play.</p>}</div> : <section className="km-match-chat" aria-label="Match chat">
-                <h2><MessageCircle size={17} /> Match chat</h2>
                 <div ref={chatScrollRef} className="km-chat-messages" role="log" aria-live="polite" aria-relevant="additions">
                   {chatMessages.length === 0 && <p className="km-muted">Say hello to the room.</p>}
                   {chatMessages.map((message) => <div key={message.id} className={`km-chat-message ${message.playerId === session?.user?.id ? "mine" : ""}`}><small>{message.playerId === session?.user?.id ? "You" : message.playerName} · {new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small><span>{message.text}</span></div>)}

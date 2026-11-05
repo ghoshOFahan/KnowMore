@@ -623,6 +623,8 @@ h3 { font-weight: 600; }
 .km-focus-moves > div { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--color-line); }
 .km-focus-moves > div b { flex: 1; overflow-wrap: anywhere; }
 .km-focus-moves small, .km-focus-moves span { color: var(--color-comment); font-size: 12px; }
-.km-focus-drawer .km-match-chat { flex: 1; }
+.km-focus-drawer .km-match-chat { display: flex; flex: 1; min-height: 200px; flex-direction: column; margin: 0; padding: 0; border: 0; }
+.km-focus-drawer .km-chat-messages { flex: 1; min-height: 0; max-height: none; padding: 8px 2px; border: 0; border-radius: 0; background: transparent; }
+.km-focus-drawer .km-chat-form { flex: none; padding-top: 10px; border-top: 1px solid var(--color-line); }
 @media (max-width: 600px) { .km-focus-player { flex: 1 1 130px; min-width: 0; padding: 8px; } .km-focus-stage { min-height: 350px; } .km-focus-toolbar > div { width: 100%; } .km-focus-toolbar button { flex: 1; } }
 @media (prefers-reduced-motion: reduce) { .km-focus-word { animation: none; } }
