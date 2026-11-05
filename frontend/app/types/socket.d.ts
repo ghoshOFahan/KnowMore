@@ -11,6 +11,7 @@ export interface RoomMessage {
 export interface ServerToClientEvents {
   gameStateUpdate: (game: GameState) => void;
   gameError: (error: string) => void;
+  playerLeft: (data: { username: string; status: string }) => void;
   aiThinking: (data: { roomId: string; isThinking: boolean }) => void;
   gameEnded: (data: { gameState: GameState; commentary: string }) => void;
   aiRuled: (data: {

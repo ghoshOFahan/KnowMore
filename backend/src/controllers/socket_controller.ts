@@ -749,7 +749,6 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         ...(relaxed ? { relaxed: true } : {}),
         points: {},
       };
-      newGame.playerRadars = await getPostgameRadars([{ clientId: dbUserId, username }]).catch(() => []);
       await setGame(redis, roomId, newGame);
       await setSocketRoom(redis, socket.id, roomId);
       socket.join(roomId);
@@ -768,6 +767,22 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
 
       const gameState = await getGame(redis, roomId);
       if (gameState === null) return socket.emit("gameError", "game not found");
+
+      const existing = gameState.players.find((p) => p.clientId === dbUserId);
+      if (existing) {
+        const oldId = existing.id;
+        const pending = pendingTimeouts.get(oldId);
+        if (pending) clearTimeout(pending);
+        pendingTimeouts.delete(oldId);
+        existing.id = socket.id;
+        if (gameState.currentPlayerId === oldId) gameState.currentPlayerId = socket.id;
+        if (oldId !== socket.id) await redis.del(SOCKET_ROOM_KEY(oldId));
+        await setGame(redis, roomId, gameState);
+        await setSocketRoom(redis, socket.id, roomId);
+        await socket.join(roomId);
+        await emitCurrentState(io, roomId, gameState);
+        return;
+      }
       if (await hasBlockedMember(dbUserId, gameState)) return socket.emit("gameError", "This room is unavailable.");
 
       if (
@@ -778,14 +793,7 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         return socket.emit("gameError", "Room full or game already started");
       }
 
-      const alreadyInRoom = gameState.players.some(
-        (p) => p.clientId === dbUserId,
-      );
-      if (alreadyInRoom)
-        return socket.emit("gameError", "player already in room");
-
       gameState.players.push({ id: socket.id, username, clientId: dbUserId, livesRemaining: 3 });
-      gameState.playerRadars = await getPostgameRadars(gameState.players.filter((player) => !player.isBot).map((player) => ({ clientId: player.clientId, username: player.username }))).catch(() => gameState.playerRadars ?? []);
       if (gameState.players.length === gameState.maxPlayers) {
         gameState.status = "INGAME";
       }
@@ -891,8 +899,6 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       try {
         const gameState = await getGame(redis, roomId);
         if (!gameState) return socket.emit("gameError", "game not found");
-        if (await hasBlockedMember(dbUserId, gameState)) return socket.emit("gameError", "This room is unavailable.");
-
         const player = gameState.players.find((p) => p.clientId === dbUserId);
         if (!player) return socket.emit("gameError", "player not found");
 
@@ -914,8 +920,8 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
         await setGame(redis, roomId, gameState);
 
         socket.join(roomId);
-        await sendChatHistory(socket, roomId);
         await emitCurrentState(io, roomId, gameState);
+        await sendChatHistory(socket, roomId);
         if (gameState.appeal && !appealTimers.has(roomId)) {
           const delay = Math.max(0, gameState.appeal.deadline - Date.now());
           appealTimers.set(roomId, setTimeout(() => { void resolveAppeal(io, analyticsQueue, roomId).catch((error) => console.error("Appeal resolution failed:", error)); }, delay));
@@ -944,6 +950,8 @@ export function initSocket(httpServer: any, analyticsQueue: Queue) {
       if (!gameState) return;
       const player = gameState.players.find((item) => item.clientId === clientId);
       if (!player || player.id !== socketId) return;
+
+      socket.to(roomId).emit("playerLeft", { username: player.username, status: gameState.status });
 
       if (gameState.status === "INGAME") {
         const wasCurrentTurn = gameState.currentPlayerId === socketId;

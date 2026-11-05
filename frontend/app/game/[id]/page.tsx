@@ -43,7 +43,6 @@ export default function GameArena({ params }: GameArenaProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const lastWordCountRef = useRef<number | null>(null);
-  const leaveHoldRef = useRef<number | null>(null);
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [input, setInput] = useState("");
@@ -51,7 +50,8 @@ export default function GameArena({ params }: GameArenaProps) {
   const [chatMessages, setChatMessages] = useState<RoomMessage[]>([]);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
-  const [holdingLeave, setHoldingLeave] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [departureNotice, setDepartureNotice] = useState("");
   const [copiedRoom, setCopiedRoom] = useState(false);
   const [safetyTarget, setSafetyTarget] = useState("");
   const [reportCategory, setReportCategory] = useState("harassment");
@@ -76,7 +76,7 @@ export default function GameArena({ params }: GameArenaProps) {
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 250);
     setSoundOn(window.localStorage.getItem("knowmore-sound") !== "off");
-    return () => { window.clearInterval(interval); if (leaveHoldRef.current !== null) window.clearTimeout(leaveHoldRef.current); };
+    return () => { window.clearInterval(interval); };
   }, []);
 
   useEffect(() => {
@@ -98,12 +98,6 @@ export default function GameArena({ params }: GameArenaProps) {
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMessages.length]);
-
-  // Attempt reconnect on mount in case of page refresh
-  useEffect(() => {
-    if (isPending || !session?.user?.id) return;
-    socket.emit("reconnectRoom", { roomId, clientId: session?.user.id });
-  }, [roomId, socket, session?.user?.id, isPending]);
 
   // Socket event listeners
   useEffect(() => {
@@ -167,6 +161,7 @@ export default function GameArena({ params }: GameArenaProps) {
 
     const handleChatHistory = (messages: RoomMessage[]) => setChatMessages(messages);
     const handleChatMessage = (message: RoomMessage) => setChatMessages((current) => [...current.slice(-49), message]);
+    const handlePlayerLeft = ({ username, status }: { username: string; status: string }) => setDepartureNotice(status === "LOBBY" ? `${username} left the room.` : `${username} left the match.`);
 
     socket.on("gameStateUpdate", handleGameState);
     socket.on("aiThinking", handleAiThinking);
@@ -175,6 +170,7 @@ export default function GameArena({ params }: GameArenaProps) {
     socket.on("gameError", handleGameError);
     socket.on("chatHistory", handleChatHistory);
     socket.on("chatMessage", handleChatMessage);
+    socket.on("playerLeft", handlePlayerLeft);
 
     return () => {
       socket.off("gameStateUpdate", handleGameState);
@@ -184,8 +180,17 @@ export default function GameArena({ params }: GameArenaProps) {
       socket.off("gameError", handleGameError);
       socket.off("chatHistory", handleChatHistory);
       socket.off("chatMessage", handleChatMessage);
+      socket.off("playerLeft", handlePlayerLeft);
     };
   }, [socket, soundOn]);
+
+  useEffect(() => {
+    if (isPending || !session?.user?.id) return;
+    const reconnect = () => socket.emit("reconnectRoom", { roomId, clientId: session.user.id });
+    socket.on("connect", reconnect);
+    if (socket.connected) reconnect();
+    return () => { socket.off("connect", reconnect); };
+  }, [roomId, socket, session?.user?.id, isPending]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -227,16 +232,6 @@ export default function GameArena({ params }: GameArenaProps) {
       setSafetyStatus("Report received."); setReportDetails("");
     } catch { setSafetyStatus("Could not save that request. Please try again."); }
   };
-  const cancelLeaveHold = () => {
-    if (leaveHoldRef.current !== null) window.clearTimeout(leaveHoldRef.current);
-    leaveHoldRef.current = null;
-    setHoldingLeave(false);
-  };
-  const startLeaveHold = () => {
-    cancelLeaveHold();
-    setHoldingLeave(true);
-    leaveHoldRef.current = window.setTimeout(() => { leaveHoldRef.current = null; setHoldingLeave(false); handleLeave(); }, 900);
-  };
 
   const wordHistory: WordEntry[] = (gameState?.wordHistory ?? []).map((word, index) => {
     const author = gameState?.wordAuthors?.[index];
@@ -273,6 +268,7 @@ export default function GameArena({ params }: GameArenaProps) {
       <div className="km-page">
         <Navbar />
         <main className="km-content" style={{ paddingTop: 4 }}>
+          {departureNotice && <p className="km-section-card" role="status">{departureNotice}</p>}
           <div className="km-game-top">
             <div><small className="km-muted block">{gameState?.players.some((player) => player.isBot) ? "AI match" : "Room"}</small><b>{roomId}</b></div>
             <div className="km-game-top-actions"><div className={`km-turn-pill ${isMyTurn ? "your-turn" : ""}`}><span className="km-turn-dot" />{gameState ? (isAiThinking ? (gameState.players.find((player) => player.id === gameState.currentPlayerId)?.isBot ? "The Thinker is choosing" : "Checking your connection") : `${gameState.players.find((player) => player.id === gameState.currentPlayerId)?.username ?? "Opponent"}'s turn`) : "Connecting"}{turnSecondsLeft !== null && <b className="km-turn-clock">{turnSecondsLeft}s</b>}</div><button className="km-sound-toggle" type="button" onClick={() => { const next = !soundOn; setSoundOn(next); window.localStorage.setItem("knowmore-sound", next ? "on" : "off"); if (next) unlockTrailAudio(); }} aria-label={soundOn ? "Mute game sounds" : "Enable game sounds"}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button></div>
@@ -288,7 +284,7 @@ export default function GameArena({ params }: GameArenaProps) {
               <div className="km-lobby-player-list" aria-label="Players in this room">{gameState.players.map((player) => <div className="km-lobby-player" key={player.clientId}><FingerprintEmblem size={38} anchors={gameState.playerRadars?.find((radar) => radar.clientId === player.clientId)?.anchors ?? []} label={`${player.username}'s fingerprint`} /><span>{player.username}{player.clientId === session?.user?.id ? " (you)" : ""}</span><span className="km-life-pips" aria-label={`${player.livesRemaining ?? 3} lives`}>{[0, 1, 2].map((life) => <i key={life} />)}</span></div>)}{Array.from({ length: Math.max(0, gameState.maxPlayers - gameState.players.length) }, (_, index) => <div className="km-lobby-player km-waiting-dots" key={`waiting-${index}`}><span className="km-player-mark">?</span><span>Waiting for a player</span><span>● ● ●</span></div>)}</div>
               <div className="flex justify-center gap-3 mt-5">
                 <button className="km-button-gold" onClick={() => { void navigator.clipboard.writeText(roomId).then(() => { setCopiedRoom(true); window.setTimeout(() => setCopiedRoom(false), 2000); }).catch(() => setServerError("Could not copy the room code.")); }}>{copiedRoom ? "Copied!" : "Copy room code"}</button>
-                <button className="km-button-secondary" onClick={handleLeave}>Cancel</button>
+                <button className="km-button-secondary" onClick={() => setConfirmLeave(true)}>Leave room</button>
               </div>
             </section>
           ) : (
@@ -346,11 +342,13 @@ export default function GameArena({ params }: GameArenaProps) {
                 </form>
               </section>}
               {isMultiplayer && gameState?.players.some((player) => !player.isBot && player.clientId !== session?.user?.id) && <details className="km-safety-panel"><summary>Report or block a player</summary><label>Player<select className="km-input" value={safetyTarget} onChange={(event) => setSafetyTarget(event.target.value)}><option value="">Choose a player</option>{gameState.players.filter((player) => !player.isBot && player.clientId !== session?.user?.id).map((player) => <option value={player.clientId} key={player.clientId}>{player.username}</option>)}</select></label><label>Reason<select className="km-input" value={reportCategory} onChange={(event) => setReportCategory(event.target.value)}><option value="harassment">Harassment</option><option value="inappropriate language">Inappropriate language</option><option value="other">Other</option></select></label><label>Details (optional)<textarea className="km-input" maxLength={500} value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} /></label><div className="flex gap-2"><button className="km-button-secondary" type="button" disabled={!safetyTarget} onClick={() => void submitSafety("report")}>Send report</button><button className="km-button-secondary" type="button" disabled={!safetyTarget} onClick={() => void submitSafety("block")}>Block and leave</button></div><small role="status">{safetyStatus}</small></details>}
-              <button type="button" onPointerDown={startLeaveHold} onPointerUp={cancelLeaveHold} onPointerLeave={cancelLeaveHold} onPointerCancel={cancelLeaveHold} onClick={(event) => { if (event.detail === 0) handleLeave(); }} className={`km-button-secondary km-hold-leave mt-5 ${holdingLeave ? "armed" : ""}`} aria-label="Hold to leave match"><span>Hold to leave</span><X size={15} /></button>
+              <button type="button" onClick={() => setConfirmLeave(true)} className="km-button-secondary mt-5"><span>Leave match</span><X size={15} /></button>
             </aside>
           </div>
           )}
         </main>
+
+        {confirmLeave && <div className="km-modal-overlay" onClick={() => setConfirmLeave(false)}><section className="km-modal" role="dialog" aria-modal="true" aria-labelledby="leave-title" onClick={(event) => event.stopPropagation()}><h2 id="leave-title">Leave {gameState?.status === "LOBBY" ? "this room" : "this match"}?</h2><p className="km-muted">{gameState?.status === "LOBBY" ? "The other players will be notified." : "You will leave the match and the other players will be notified."}</p><div className="flex flex-wrap gap-3 mt-5"><button type="button" className="km-button-secondary" onClick={() => setConfirmLeave(false)}>Stay</button><button type="button" className="km-button-gold" onClick={handleLeave}>Leave</button></div></section></div>}
 
         {/* Game Over Modal */}
         <AnimatePresence>
