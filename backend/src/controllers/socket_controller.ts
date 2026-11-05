@@ -619,8 +619,6 @@ async function runBotTurn(io: Server, analyticsQueue: Queue, roomId: string) {
     delete gameState.turnExpiresAt;
     await setGame(redis, roomId, gameState);
     io.to(roomId).emit("aiThinking", { roomId, isThinking: true });
-    await new Promise((resolve) => setTimeout(resolve, 650));
-
     const lastWord = await getLastWord(redis, roomId);
     const usedWords = await getWords(redis, roomId);
     let botWord: string | undefined;
